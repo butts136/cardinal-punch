@@ -1,0 +1,163 @@
+name: Release-Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Version semantique a publier, par exemple 1.2.0
+        required: true
+        type: string
+      release_name:
+        description: Nom optionnel de la GitHub Release
+        required: false
+        type: string
+      release_notes:
+        description: Notes supplementaires a inclure dans la release
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-android
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install Android 36 SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for variable in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::$variable GitHub secret is required for a signed release build."
+              exit 1
+            fi
+          done
+
+      - name: Decode Android keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cardinal-punch-release.jks"
+
+      - name: Prepare release metadata
+        id: meta
+        shell: bash
+        env:
+          INPUT_VERSION_NAME: ${{ inputs.version_name }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+          INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          VERSION_NAME="$(echo "$INPUT_VERSION_NAME" | tr -d '[:space:]')"
+          if [ -z "$VERSION_NAME" ]; then
+            echo "::error::version_name input is required."
+            exit 1
+          fi
+
+          TAG_NAME="v$VERSION_NAME"
+          RELEASE_NAME="$INPUT_RELEASE_NAME"
+          if [ -z "$RELEASE_NAME" ]; then
+            RELEASE_NAME="Cardinal Punch $TAG_NAME"
+          fi
+
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG_NAME already exists."
+            exit 1
+          fi
+
+          {
+            echo "version_name=$VERSION_NAME"
+            echo "version_code=${{ github.run_number }}"
+            echo "tag_name=$TAG_NAME"
+            echo "release_name=$RELEASE_NAME"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "Cardinal Punch Android release"
+            echo
+            echo "- Version: $VERSION_NAME"
+            echo "- Version code: ${{ github.run_number }}"
+            echo "- Source branch: main"
+            echo "- Commit: ${{ github.sha }}"
+            echo
+            if [ -n "$INPUT_RELEASE_NOTES" ]; then
+              echo "Notes supplementaires:"
+              echo "$INPUT_RELEASE_NOTES"
+              echo
+            fi
+            echo "Assets:"
+            echo "- APK signe pour distribution GitHub"
+            echo "- AAB signe pour preparation Google Play"
+          } > release-body.md
+
+      - name: Grant execute permission for Gradle
+        run: chmod +x gradlew
+
+      - name: Build signed GitHub APK and Play App Bundle
+        env:
+          SIGNING_STORE_FILE: ${{ runner.temp }}/cardinal-punch-release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: >
+          ./gradlew clean assembleGithubRelease bundlePlayRelease
+          -PVERSION_NAME=${{ steps.meta.outputs.version_name }}
+          -PVERSION_CODE=${{ steps.meta.outputs.version_code }}
+          -PSIGNING_STORE_FILE="${{ runner.temp }}/cardinal-punch-release.jks"
+          -PSIGNING_STORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          -PSIGNING_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+          -PSIGNING_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/github/release/*.apk "dist/Cardinal-Punch-v${{ steps.meta.outputs.version_name }}-github.apk"
+          cp app/build/outputs/bundle/playRelease/*.aab "dist/Cardinal-Punch-v${{ steps.meta.outputs.version_name }}-play.aab"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardinal-punch-release-${{ steps.meta.outputs.version_name }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          target_commitish: main
+          name: ${{ steps.meta.outputs.release_name }}
+          body_path: release-body.md
+          files: |
+            dist/*.apk
+            dist/*.aab

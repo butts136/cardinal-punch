@@ -24,6 +24,13 @@ public class SessionManager {
     private static final String KEY_BRIDGE_TOKEN = "bridge_token";
     private static final String KEY_ULTRA_FAST_ENABLED = "ultra_fast_enabled";
     private static final String KEY_DEVICE_ID = "device_id";
+    private static final String KEY_UPDATE_AVAILABLE = "update_available";
+    private static final String KEY_UPDATE_LATEST_VERSION = "update_latest_version";
+    private static final String KEY_UPDATE_RELEASE_URL = "update_release_url";
+    private static final String KEY_UPDATE_APK_URL = "update_apk_url";
+    private static final String KEY_UPDATE_DOWNLOADED_PATH = "update_downloaded_path";
+    private static final String KEY_UPDATE_LAST_CHECK = "update_last_check";
+    private static final String KEY_AUTO_UPDATE_ENABLED = "auto_update_enabled";
 
     // Legacy keys for one-time migration.
     private static final String KEY_API_URL = "api_url";
@@ -390,6 +397,62 @@ public class SessionManager {
 
     public synchronized void setUltraFastEnabled(boolean enabled) {
         preferences.edit().putBoolean(KEY_ULTRA_FAST_ENABLED, enabled).apply();
+    }
+
+    public synchronized boolean isUpdateAvailable() {
+        return preferences.getBoolean(KEY_UPDATE_AVAILABLE, false);
+    }
+
+    public synchronized void setUpdateAvailable(boolean available) {
+        preferences.edit().putBoolean(KEY_UPDATE_AVAILABLE, available).apply();
+    }
+
+    public synchronized String getUpdateLatestVersion() {
+        return preferences.getString(KEY_UPDATE_LATEST_VERSION, "");
+    }
+
+    public synchronized void setUpdateLatestVersion(String version) {
+        preferences.edit().putString(KEY_UPDATE_LATEST_VERSION, version == null ? "" : version).apply();
+    }
+
+    public synchronized String getUpdateReleaseUrl() {
+        return preferences.getString(KEY_UPDATE_RELEASE_URL, "");
+    }
+
+    public synchronized void setUpdateReleaseUrl(String url) {
+        preferences.edit().putString(KEY_UPDATE_RELEASE_URL, url == null ? "" : url).apply();
+    }
+
+    public synchronized String getUpdateApkUrl() {
+        return preferences.getString(KEY_UPDATE_APK_URL, "");
+    }
+
+    public synchronized void setUpdateApkUrl(String url) {
+        preferences.edit().putString(KEY_UPDATE_APK_URL, url == null ? "" : url).apply();
+    }
+
+    public synchronized String getDownloadedUpdatePath() {
+        return preferences.getString(KEY_UPDATE_DOWNLOADED_PATH, "");
+    }
+
+    public synchronized void setDownloadedUpdatePath(String path) {
+        preferences.edit().putString(KEY_UPDATE_DOWNLOADED_PATH, path == null ? "" : path).apply();
+    }
+
+    public synchronized long getUpdateLastCheck() {
+        return preferences.getLong(KEY_UPDATE_LAST_CHECK, 0L);
+    }
+
+    public synchronized void setUpdateLastCheck(long value) {
+        preferences.edit().putLong(KEY_UPDATE_LAST_CHECK, value).apply();
+    }
+
+    public synchronized boolean isAutoUpdateEnabled() {
+        return preferences.getBoolean(KEY_AUTO_UPDATE_ENABLED, false);
+    }
+
+    public synchronized void setAutoUpdateEnabled(boolean enabled) {
+        preferences.edit().putBoolean(KEY_AUTO_UPDATE_ENABLED, enabled).apply();
     }
 
     private void migrateLegacyIfNeeded() {

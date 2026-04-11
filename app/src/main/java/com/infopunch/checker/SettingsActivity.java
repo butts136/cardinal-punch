@@ -8,6 +8,7 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -34,6 +35,7 @@ public class SettingsActivity extends AppCompatActivity {
     private final BridgeClient bridgeClient = new BridgeClient();
 
     private SessionManager sessionManager;
+    private AppUpdateManager appUpdateManager;
     private TextView activeAccountView;
     private LinearLayout accountsContainer;
     private EditText companyCodeInput;
@@ -46,6 +48,8 @@ public class SettingsActivity extends AppCompatActivity {
     private EditText bridgeUrlInput;
     private EditText bridgeTokenInput;
     private TextView ringtoneValueView;
+    private TextView updateStatusView;
+    private SwitchMaterial autoUpdateSwitch;
     private boolean updating = false;
 
     private final ActivityResultLauncher<Intent> ringtonePickerLauncher =
@@ -75,18 +79,37 @@ public class SettingsActivity extends AppCompatActivity {
         bridgeUrlInput = findViewById(R.id.bridgeUrlInput);
         bridgeTokenInput = findViewById(R.id.bridgeTokenInput);
         ringtoneValueView = findViewById(R.id.ringtoneValueView);
+        updateStatusView = findViewById(R.id.updateStatusView);
+        autoUpdateSwitch = findViewById(R.id.autoUpdateSwitch);
+        View updateSection = findViewById(R.id.updateSection);
+        View bridgeSection = findViewById(R.id.bridgeSection);
         Button addAccountButton = findViewById(R.id.addAccountButton);
         Button pickRingtoneButton = findViewById(R.id.pickRingtoneButton);
         Button resetRingtoneButton = findViewById(R.id.resetRingtoneButton);
         Button saveBridgeButton = findViewById(R.id.saveBridgeButton);
         Button registerBridgeButton = findViewById(R.id.registerBridgeButton);
+        Button checkUpdatesButton = findViewById(R.id.checkUpdatesButton);
+        Button installUpdateButton = findViewById(R.id.installUpdateButton);
         Button logoutButton = findViewById(R.id.logoutButton);
 
         try {
             sessionManager = new SessionManager(this);
+            if (BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+                appUpdateManager = new AppUpdateManager(this);
+                UpdateScheduler.schedule(this);
+            }
         } catch (Exception exception) {
             finish();
             return;
+        }
+
+        if (!BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+            updateSection.setVisibility(View.GONE);
+        }
+        if (!BuildConfig.ULTRA_FAST_BRIDGE_ENABLED) {
+            sessionManager.setUltraFastEnabled(false);
+            ultraFastSwitch.setVisibility(View.GONE);
+            bridgeSection.setVisibility(View.GONE);
         }
 
         bindValues();
@@ -136,6 +159,11 @@ public class SettingsActivity extends AppCompatActivity {
             if (updating) {
                 return;
             }
+            if (!BuildConfig.ULTRA_FAST_BRIDGE_ENABLED) {
+                sessionManager.setUltraFastEnabled(false);
+                bindValues();
+                return;
+            }
             sessionManager.setUltraFastEnabled(isChecked);
             if (isChecked) {
                 saveBridgeSettings();
@@ -157,6 +185,18 @@ public class SettingsActivity extends AppCompatActivity {
             }
         });
 
+        autoUpdateSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (updating) {
+                return;
+            }
+            if (!BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+                sessionManager.setAutoUpdateEnabled(false);
+                bindValues();
+                return;
+            }
+            sessionManager.setAutoUpdateEnabled(isChecked);
+        });
+
         addAccountButton.setOnClickListener(v -> addOrUpdateAccount());
         pickRingtoneButton.setOnClickListener(v -> pickRingtone());
         resetRingtoneButton.setOnClickListener(v -> {
@@ -168,6 +208,8 @@ public class SettingsActivity extends AppCompatActivity {
             showMessage("Serveur Linux enregistre.");
         });
         registerBridgeButton.setOnClickListener(v -> registerCurrentAccountToBridge());
+        checkUpdatesButton.setOnClickListener(v -> checkUpdatesNow());
+        installUpdateButton.setOnClickListener(v -> openBestUpdateAction());
         logoutButton.setOnClickListener(v -> disconnectCurrentAccount());
     }
 
@@ -182,8 +224,8 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         activeAccountView.setText(current.fullName + " (" + current.companyCode + " / " + current.nip + ")");
-        companyCodeInput.setText(current.companyCode);
-        nipInput.setText(current.nip);
+        companyCodeInput.setText("");
+        nipInput.setText("");
         bridgeUrlInput.setText(sessionManager.getBridgeUrl());
         bridgeTokenInput.setText("");
         bridgeTokenInput.setHint(sessionManager.getBridgeToken().isEmpty()
@@ -194,7 +236,9 @@ public class SettingsActivity extends AppCompatActivity {
         realtimeSwitch.setChecked(current.realtimeMonitorEnabled);
         backgroundSwitch.setChecked(current.backgroundMonitorEnabled);
         ultraFastSwitch.setChecked(sessionManager.isUltraFastEnabled());
+        autoUpdateSwitch.setChecked(sessionManager.isAutoUpdateEnabled());
         ringtoneValueView.setText(resolveRingtoneTitle(current.notificationRingtone));
+        updateStatusView.setText(buildUpdateStatusText());
         renderAccounts(sessionManager.getAccounts(), current.accountId);
         updating = false;
     }
@@ -283,7 +327,51 @@ public class SettingsActivity extends AppCompatActivity {
         sessionManager.setBridgeUrl(bridgeUrlInput.getText().toString().trim());
     }
 
+    private void checkUpdatesNow() {
+        if (!BuildConfig.EXTERNAL_UPDATES_ENABLED || appUpdateManager == null) {
+            showMessage("Les mises a jour GitHub externes ne sont pas actives sur cette version.");
+            return;
+        }
+        executorService.execute(() -> {
+            try {
+                appUpdateManager.checkForUpdates(true);
+                runOnUiThread(() -> {
+                    bindValues();
+                    PunchWidgetProvider.refreshAll(this);
+                    showMessage(sessionManager.isUpdateAvailable()
+                            ? "Mise a jour detectee."
+                            : "Aucune mise a jour disponible.");
+                });
+            } catch (Exception exception) {
+                runOnUiThread(() -> showMessage(exception.getMessage() != null
+                        ? exception.getMessage()
+                        : "Verification des mises a jour impossible."));
+            }
+        });
+    }
+
+    private void openBestUpdateAction() {
+        try {
+            if (!BuildConfig.EXTERNAL_UPDATES_ENABLED || appUpdateManager == null) {
+                showMessage("Cette version utilise le canal de mise a jour Google Play.");
+                return;
+            }
+            Intent intent = appUpdateManager.buildBestActionIntent();
+            if (intent == null) {
+                showMessage("Aucune mise a jour telechargee ou disponible.");
+                return;
+            }
+            startActivity(intent);
+        } catch (Exception exception) {
+            showMessage("Ouverture de la mise a jour impossible.");
+        }
+    }
+
     private void registerCurrentAccountToBridge() {
+        if (!BuildConfig.ULTRA_FAST_BRIDGE_ENABLED) {
+            showMessage("Le mode ultra-rapide n'est pas disponible sur cette version.");
+            return;
+        }
         SessionManager.SessionData current = sessionManager.getSession();
         if (current == null) {
             return;
@@ -389,6 +477,23 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void showMessage(String message) {
         Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG).show();
+    }
+
+    private String buildUpdateStatusText() {
+        if (!BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+            return "Cette version utilise le canal de mise a jour Google Play.";
+        }
+        if (appUpdateManager == null) {
+            return "Etat des mises a jour indisponible.";
+        }
+        AppUpdateManager.UpdateState state = appUpdateManager.getState();
+        if (!state.updateAvailable) {
+            return "Aucune mise a jour detectee pour le moment.";
+        }
+        if (appUpdateManager.hasDownloadedApk()) {
+            return "Mise a jour " + state.latestVersion + " telechargee et prete a installer.";
+        }
+        return "Mise a jour " + state.latestVersion + " disponible sur GitHub.";
     }
 
     @Override

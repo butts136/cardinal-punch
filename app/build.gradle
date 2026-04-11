@@ -2,25 +2,81 @@ plugins {
     id("com.android.application")
 }
 
+def envOrProp = { String key, String defaultValue = null ->
+    def fromProperty = project.findProperty(key)
+    if (fromProperty != null && fromProperty.toString().trim()) {
+        return fromProperty.toString().trim()
+    }
+    def fromEnv = System.getenv(key)
+    if (fromEnv != null && fromEnv.toString().trim()) {
+        return fromEnv.toString().trim()
+    }
+    return defaultValue
+}
+
+def versionCodeValue = Integer.parseInt(envOrProp("VERSION_CODE", "1"))
+def versionNameValue = envOrProp("VERSION_NAME", "1.0.0")
+def signingStoreFileValue = envOrProp("SIGNING_STORE_FILE")
+def signingStorePasswordValue = envOrProp("SIGNING_STORE_PASSWORD")
+def signingKeyAliasValue = envOrProp("SIGNING_KEY_ALIAS")
+def signingKeyPasswordValue = envOrProp("SIGNING_KEY_PASSWORD")
+def hasReleaseSigning = signingStoreFileValue && signingStorePasswordValue && signingKeyAliasValue && signingKeyPasswordValue
+
 android {
     namespace "com.infopunch.checker"
-    compileSdk 34
+    compileSdk 36
+    flavorDimensions += "distribution"
 
     defaultConfig {
         applicationId "com.infopunch.checker"
         minSdk 24
-        targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        targetSdk 36
+        versionCode versionCodeValue
+        versionName versionNameValue
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(signingStoreFileValue)
+                storePassword signingStorePasswordValue
+                keyAlias signingKeyAliasValue
+                keyPassword signingKeyPasswordValue
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+    }
+
+    productFlavors {
+        github {
+            dimension "distribution"
+            manifestPlaceholders = [appUsesCleartextTraffic: "true"]
+            buildConfigField "boolean", "EXTERNAL_UPDATES_ENABLED", "true"
+            buildConfigField "boolean", "ULTRA_FAST_BRIDGE_ENABLED", "true"
+        }
+        play {
+            dimension "distribution"
+            manifestPlaceholders = [appUsesCleartextTraffic: "false"]
+            buildConfigField "boolean", "EXTERNAL_UPDATES_ENABLED", "false"
+            buildConfigField "boolean", "ULTRA_FAST_BRIDGE_ENABLED", "false"
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     compileOptions {

@@ -3,6 +3,7 @@ package com.infopunch.checker;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -43,10 +44,14 @@ public class MainActivity extends AppCompatActivity {
     private Button menuBankButton;
     private Button menuTimesheetButton;
     private Button menuSettingsButton;
+    private View updateBanner;
+    private TextView updateBannerText;
+    private Button updateBannerButton;
 
     private SessionManager sessionManager;
     private boolean hasUnlockedCurrentSession = false;
     private PunchRealtimeMonitor realtimeMonitor;
+    private AppUpdateManager appUpdateManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,9 +71,15 @@ public class MainActivity extends AppCompatActivity {
         menuBankButton = findViewById(R.id.menuBankButton);
         menuTimesheetButton = findViewById(R.id.menuTimesheetButton);
         menuSettingsButton = findViewById(R.id.menuSettingsButton);
+        updateBanner = findViewById(R.id.updateBanner);
+        updateBannerText = findViewById(R.id.updateBannerText);
+        updateBannerButton = findViewById(R.id.updateBannerButton);
 
         try {
             sessionManager = new SessionManager(this);
+            if (BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+                appUpdateManager = new AppUpdateManager(this);
+            }
         } catch (Exception exception) {
             showMessage("Impossible d'initialiser le stockage securise.");
             finish();
@@ -81,6 +92,8 @@ public class MainActivity extends AppCompatActivity {
         loadDefaults();
         setupActions();
         handleIntentAccount(getIntent());
+        bindUpdateBanner();
+        scheduleUpdateCheckIfNeeded();
 
         if (sessionManager.hasSession()) {
             showLockedWaitingState();
@@ -128,6 +141,7 @@ public class MainActivity extends AppCompatActivity {
         menuBankButton.setOnClickListener(v -> showPlaceholderSection(getString(R.string.placeholder_coming_soon)));
         menuTimesheetButton.setOnClickListener(v -> showPlaceholderSection(getString(R.string.placeholder_coming_soon)));
         menuSettingsButton.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        updateBannerButton.setOnClickListener(v -> openBestUpdateAction());
     }
 
     private void loadDefaults() {
@@ -137,8 +151,8 @@ public class MainActivity extends AppCompatActivity {
             nipInput.setText(session.nip);
             return;
         }
-        companyCodeInput.setText("201796");
-        nipInput.setText("5722");
+        companyCodeInput.setText("");
+        nipInput.setText("");
     }
 
     private void connect() {
@@ -237,6 +251,7 @@ public class MainActivity extends AppCompatActivity {
         welcomeView.setText(getString(R.string.welcome_prefix) + " " + fullName + suffix);
         updateStatus("Connecte");
         placeholderView.setText(getString(R.string.menu_instruction));
+        bindUpdateBanner();
     }
 
     private void handleIntentAccount(Intent intent) {
@@ -353,6 +368,60 @@ public class MainActivity extends AppCompatActivity {
 
     private void showMessage(String message) {
         Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG).show();
+    }
+
+    private void bindUpdateBanner() {
+        if (!BuildConfig.EXTERNAL_UPDATES_ENABLED || appUpdateManager == null || updateBanner == null) {
+            if (updateBanner != null) {
+                updateBanner.setVisibility(View.GONE);
+            }
+            return;
+        }
+        AppUpdateManager.UpdateState state = appUpdateManager.getState();
+        if (!state.updateAvailable) {
+            updateBanner.setVisibility(View.GONE);
+            return;
+        }
+        updateBanner.setVisibility(View.VISIBLE);
+        boolean downloaded = appUpdateManager.hasDownloadedApk();
+        updateBannerText.setText(downloaded
+                ? "Mise a jour " + state.latestVersion + " prete a installer."
+                : "Mise a jour " + state.latestVersion + " disponible sur GitHub.");
+        updateBannerButton.setText(downloaded ? "Installer" : "Voir");
+    }
+
+    private void openBestUpdateAction() {
+        try {
+            if (appUpdateManager == null) {
+                return;
+            }
+            Intent intent = appUpdateManager.buildBestActionIntent();
+            if (intent == null) {
+                showMessage("Aucune action de mise a jour disponible.");
+                return;
+            }
+            startActivity(intent);
+        } catch (Exception exception) {
+            showMessage("Ouverture de la mise a jour impossible.");
+        }
+    }
+
+    private void scheduleUpdateCheckIfNeeded() {
+        if (!BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+            return;
+        }
+        UpdateScheduler.schedule(this);
+        if (appUpdateManager == null || !appUpdateManager.shouldCheckNow()) {
+            return;
+        }
+        executorService.execute(() -> {
+            try {
+                appUpdateManager.checkForUpdates(true);
+                runOnUiThread(this::bindUpdateBanner);
+                PunchWidgetProvider.refreshAll(this);
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     private String buildPunchSignature(org.json.JSONObject lastPunch) {

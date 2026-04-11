@@ -28,6 +28,10 @@
     <string name="settings_realtime">Verification rapide quand l\u0027app est ouverte</string>
     <string name="settings_background">Verification en arriere-plan</string>
     <string name="settings_ultra_fast">Mode ultra-rapide via serveur Linux</string>
+    <string name="settings_update_title">Mises a jour de l\'application</string>
+    <string name="settings_auto_update">Telecharger automatiquement la mise a jour si disponible</string>
+    <string name="settings_check_updates">Verifier maintenant</string>
+    <string name="settings_install_update">Installer / ouvrir la mise a jour</string>
     <string name="settings_ringtone_title">Sonnerie des notifications</string>
     <string name="settings_ringtone_pick">Choisir la sonnerie</string>
     <string name="settings_ringtone_default">Sonnerie systeme</string>

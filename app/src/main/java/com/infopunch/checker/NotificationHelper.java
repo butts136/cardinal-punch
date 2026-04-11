@@ -18,10 +18,12 @@ import androidx.core.content.ContextCompat;
 public class NotificationHelper {
     private static final String CHANNEL_NEW_PUNCH_PREFIX = "info_punch_updates_";
     private static final String CHANNEL_MISSING_PUNCH_PREFIX = "info_punch_missing_";
+    private static final String CHANNEL_APP_UPDATE = "cardinal_punch_app_updates";
 
     public static void ensureChannel(Context context) {
         ensureNotificationChannel(context, CHANNEL_NEW_PUNCH_PREFIX + "default", "Nouveaux poincons", null);
         ensureNotificationChannel(context, CHANNEL_MISSING_PUNCH_PREFIX + "default", "Poincons manquants", null);
+        ensureNotificationChannel(context, CHANNEL_APP_UPDATE, "Mises a jour de l'application", null);
     }
 
     public static void showNewPunchNotification(Context context, String accountId, String accountName, String text, String ringtoneUri) {
@@ -46,6 +48,36 @@ public class NotificationHelper {
                 ringtoneUri,
                 true
         );
+    }
+
+    public static void showUpdateNotification(Context context, String title, String text, Intent actionIntent) {
+        if (!BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                context,
+                7001,
+                actionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_APP_UPDATE)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true);
+
+        NotificationManagerCompat.from(context).notify(7001, builder.build());
     }
 
     private static void showNotification(

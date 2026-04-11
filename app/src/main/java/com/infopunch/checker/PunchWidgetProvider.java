@@ -102,11 +102,24 @@ public class PunchWidgetProvider extends AppWidgetProvider {
             HoursModels.WeekData weekData = repository.loadWeekForDate(session, selectedDate);
             HoursModels.DayEntry dayEntry = findDay(weekData.days, selectedDate);
             views.setTextViewText(R.id.accountView, session.fullName);
+            if (BuildConfig.EXTERNAL_UPDATES_ENABLED) {
+                AppUpdateManager updateManager = new AppUpdateManager(context);
+                AppUpdateManager.UpdateState updateState = updateManager.getState();
+                if (updateState.updateAvailable) {
+                    views.setViewVisibility(R.id.updateBannerView, android.view.View.VISIBLE);
+                    views.setTextViewText(R.id.updateBannerView, "Mise a jour " + updateState.latestVersion + " disponible");
+                } else {
+                    views.setViewVisibility(R.id.updateBannerView, android.view.View.GONE);
+                }
+            } else {
+                views.setViewVisibility(R.id.updateBannerView, android.view.View.GONE);
+            }
             views.setTextViewText(R.id.dayTitleView, capitalize(selectedDate.format(TITLE_FORMAT)));
             views.setTextViewText(R.id.bankView, "Banque : " + (weekData.currentBankHours == null ? "-" : weekData.currentBankHours));
             views.setTextViewText(R.id.shiftsView, buildShiftText(dayEntry));
             manager.updateAppWidget(widgetId, views);
         } catch (Exception exception) {
+            views.setViewVisibility(R.id.updateBannerView, android.view.View.GONE);
             views.setTextViewText(R.id.dayTitleView, capitalize(selectedDate.format(TITLE_FORMAT)));
             views.setTextViewText(R.id.bankView, "Banque : -");
             views.setTextViewText(R.id.shiftsView, "Chargement impossible.");
