@@ -1,0 +1,16 @@
+.gradle/
+.gradle-dist/
+.idea/
+build/
+app/build/
+local.properties
+*.iml
+captures/
+.DS_Store
+Thumbs.db
+Linux_watch_server/__pycache__/
+Linux_watch_server/.venv/
+Linux_watch_server/accounts.json
+Linux_watch_server/state.json
+Linux_watch_server/pair_code.txt
+Linux_watch_server/paired_devices.json
