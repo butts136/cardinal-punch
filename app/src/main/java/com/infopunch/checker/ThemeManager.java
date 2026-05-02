@@ -2,9 +2,12 @@ package com.infopunch.checker;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class ThemeManager {
@@ -14,13 +17,26 @@ public class ThemeManager {
     public static final String THEME_BLUE = "blue";
     public static final String THEME_GREEN = "green";
     public static final String THEME_GRAY = "gray";
+    private static final String PREFS = "cardinal_punch_ui_prefs";
+    private static final String KEY_THEME_NAME = "theme_name";
 
     public static Palette palette(Context context) {
-        try {
-            return palette(new SessionManager(context).getThemeName());
-        } catch (Exception ignored) {
-            return palette(THEME_GREEN);
-        }
+        return palette(getThemeName(context));
+    }
+
+    public static String getThemeName(Context context) {
+        return prefs(context).getString(KEY_THEME_NAME, THEME_GREEN);
+    }
+
+    public static void setThemeName(Context context, String themeName) {
+        prefs(context).edit().putString(
+                KEY_THEME_NAME,
+                themeName == null || themeName.trim().isEmpty() ? THEME_GREEN : themeName.trim()
+        ).apply();
+    }
+
+    private static SharedPreferences prefs(Context context) {
+        return context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
     public static Palette palette(String theme) {
@@ -64,6 +80,13 @@ public class ThemeManager {
                 textView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
                 textView.setTextColor(palette.text);
             }
+        }
+        if (view instanceof Button) {
+            Button button = (Button) view;
+            button.setTextColor(palette.text);
+            button.setBackgroundColor(palette.accent);
+        } else if (view instanceof LinearLayout && view.getId() != android.R.id.content) {
+            view.setBackgroundColor(palette.surface);
         }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;

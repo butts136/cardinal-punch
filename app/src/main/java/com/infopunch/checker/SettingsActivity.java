@@ -218,7 +218,7 @@ public class SettingsActivity extends AppCompatActivity {
                 if (updating) {
                     return;
                 }
-                sessionManager.setThemeName(themeValueForPosition(position));
+                ThemeManager.setThemeName(SettingsActivity.this, themeValueForPosition(position));
                 ThemeManager.apply(SettingsActivity.this);
                 PunchWidgetProvider.refreshAll(SettingsActivity.this);
             }
@@ -277,7 +277,7 @@ public class SettingsActivity extends AppCompatActivity {
         autoUpdateSwitch.setChecked(sessionManager.isAutoUpdateEnabled());
         ringtoneValueView.setText(resolveRingtoneTitle(current.notificationRingtone));
         updateStatusView.setText(buildUpdateStatusText());
-        themeSpinner.setSelection(positionForTheme(sessionManager.getThemeName()));
+        themeSpinner.setSelection(positionForTheme(ThemeManager.getThemeName(this)));
         renderAccounts(sessionManager.getAccounts(), current.accountId);
         updating = false;
     }

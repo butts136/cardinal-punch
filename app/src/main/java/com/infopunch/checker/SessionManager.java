@@ -31,7 +31,6 @@ public class SessionManager {
     private static final String KEY_UPDATE_DOWNLOADED_PATH = "update_downloaded_path";
     private static final String KEY_UPDATE_LAST_CHECK = "update_last_check";
     private static final String KEY_AUTO_UPDATE_ENABLED = "auto_update_enabled";
-    private static final String KEY_THEME_NAME = "theme_name";
 
     // Legacy keys for one-time migration.
     private static final String KEY_API_URL = "api_url";
@@ -481,17 +480,6 @@ public class SessionManager {
 
     public synchronized void setAutoUpdateEnabled(boolean enabled) {
         preferences.edit().putBoolean(KEY_AUTO_UPDATE_ENABLED, enabled).apply();
-    }
-
-    public synchronized String getThemeName() {
-        return preferences.getString(KEY_THEME_NAME, ThemeManager.THEME_GREEN);
-    }
-
-    public synchronized void setThemeName(String themeName) {
-        preferences.edit().putString(
-                KEY_THEME_NAME,
-                themeName == null || themeName.trim().isEmpty() ? ThemeManager.THEME_GREEN : themeName.trim()
-        ).apply();
     }
 
     private void migrateLegacyIfNeeded() {
