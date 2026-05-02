@@ -25,6 +25,7 @@ public class PunchWidgetProvider extends AppWidgetProvider {
     private static final String ACTION_NEXT = "com.infopunch.checker.widget.NEXT";
     private static final String ACTION_REFRESH = "com.infopunch.checker.widget.REFRESH";
     private static final String EXTRA_WIDGET_ID = "widget_id";
+    private static final long SELECTED_DAY_RESET_MS = 5L * 60L * 1000L;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static final DateTimeFormatter TITLE_FORMAT = DateTimeFormatter.ofPattern("EEE dd MMM", Locale.CANADA_FRENCH);
 
@@ -56,6 +57,9 @@ public class PunchWidgetProvider extends AppWidgetProvider {
                 selectedDate = selectedDate.minusDays(1);
             } else if (ACTION_NEXT.equals(action)) {
                 selectedDate = selectedDate.plusDays(1);
+                if (selectedDate.isAfter(LocalDate.now())) {
+                    selectedDate = LocalDate.now();
+                }
             }
             setSelectedDate(context, widgetId, selectedDate);
             updateWidgetsAsync(context, new int[]{widgetId}, selectedDate);
@@ -73,6 +77,8 @@ public class PunchWidgetProvider extends AppWidgetProvider {
 
     private void renderWidget(Context context, AppWidgetManager manager, int widgetId, LocalDate selectedDate) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_punch);
+        ThemeManager.Palette palette = ThemeManager.palette(context);
+        applyTheme(views, palette);
         applyResponsiveLayout(manager, widgetId, views);
         views.setOnClickPendingIntent(R.id.prevButton, buildActionIntent(context, widgetId, ACTION_PREVIOUS));
         views.setOnClickPendingIntent(R.id.nextButton, buildActionIntent(context, widgetId, ACTION_NEXT));
@@ -152,22 +158,17 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         if (dayEntry == null || dayEntry.shifts.isEmpty()) {
             return "Aucun poincon visible pour cette journee.";
         }
-        StringBuilder builder = new StringBuilder();
-        for (String shift : dayEntry.shifts) {
-            String[] parts = shift.split("-");
-            String entry = parts.length > 0 ? parts[0].trim() : "--:--";
-            String exit = parts.length > 1 ? parts[1].trim() : "--:--";
-            if (builder.length() > 0) {
-                builder.append("\n");
-            }
-            builder.append("Entree : ").append(entry).append("\n");
-            builder.append("Sortie : ").append(exit);
-        }
-        return builder.toString();
+        return PunchDisplay.buildTwoColumnText(dayEntry.shifts);
     }
 
     private LocalDate getSelectedDate(Context context, int widgetId) {
-        String stored = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+        android.content.SharedPreferences prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE);
+        long changedAt = prefs.getLong("selected_date_changed_at_" + widgetId, 0L);
+        if (changedAt > 0 && System.currentTimeMillis() - changedAt > SELECTED_DAY_RESET_MS) {
+            setSelectedDate(context, widgetId, LocalDate.now());
+            return LocalDate.now();
+        }
+        String stored = prefs
                 .getString("selected_date_" + widgetId, "");
         if (stored == null || stored.isEmpty()) {
             return LocalDate.now();
@@ -179,6 +180,7 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
                 .edit()
                 .putString("selected_date_" + widgetId, date.toString())
+                .putLong("selected_date_changed_at_" + widgetId, date.equals(LocalDate.now()) ? 0L : System.currentTimeMillis())
                 .apply();
     }
 
@@ -208,6 +210,19 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         views.setTextViewTextSize(R.id.refreshButton, TypedValue.COMPLEX_UNIT_SP, sizing.refreshTextSp);
     }
 
+    private void applyTheme(RemoteViews views, ThemeManager.Palette palette) {
+        views.setInt(R.id.widgetRoot, "setBackgroundColor", palette.surface);
+        views.setTextColor(R.id.accountView, palette.textSecondary);
+        views.setTextColor(R.id.dayTitleView, palette.text);
+        views.setTextColor(R.id.prevButton, palette.text);
+        views.setTextColor(R.id.nextButton, palette.text);
+        views.setTextColor(R.id.refreshButton, palette.text);
+        views.setTextColor(R.id.bankView, palette.successText);
+        views.setTextColor(R.id.shiftsView, palette.text);
+        views.setInt(R.id.bankView, "setBackgroundColor", palette.successSoft);
+        views.setInt(R.id.shiftsView, "setBackgroundColor", palette.surfaceSecondary);
+    }
+
     private WidgetSizing resolveSizing(Bundle options) {
         int minWidthDp = options != null ? options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180) : 180;
         int minHeightDp = options != null ? options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 140) : 140;
@@ -218,12 +233,12 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         int footprint = Math.min(usableWidthDp, usableHeightDp);
 
         if (usableWidthDp >= 300 || usableHeightDp >= 260 || footprint >= 220) {
-            return new WidgetSizing(20, 14, 10, 16, 18, 12, 16f, 26f, 28f, 18f, 19f, 17f);
+            return new WidgetSizing(20, 24, 18, 16, 18, 12, 16f, 36f, 28f, 18f, 19f, 17f);
         }
         if (usableWidthDp >= 230 || usableHeightDp >= 200 || footprint >= 170) {
-            return new WidgetSizing(16, 12, 8, 13, 14, 10, 13f, 21f, 22f, 15f, 16f, 14f);
+            return new WidgetSizing(16, 22, 16, 13, 14, 10, 13f, 32f, 22f, 15f, 16f, 14f);
         }
-        return new WidgetSizing(12, 10, 6, 10, 12, 8, 11f, 17f, 18f, 13f, 13f, 12f);
+        return new WidgetSizing(12, 18, 14, 10, 12, 8, 11f, 28f, 18f, 13f, 13f, 12f);
     }
 
     private static class WidgetSizing {

@@ -57,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        ThemeManager.apply(this);
 
         companyCodeInput = findViewById(R.id.companyCodeInput);
         nipInput = findViewById(R.id.nipInput);
@@ -100,6 +101,13 @@ public class MainActivity extends AppCompatActivity {
         } else {
             showLoginScreen();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        ThemeManager.apply(this);
+        bindUpdateBanner();
     }
 
     @Override
@@ -417,7 +425,12 @@ public class MainActivity extends AppCompatActivity {
         executorService.execute(() -> {
             try {
                 appUpdateManager.checkForUpdates(true);
-                runOnUiThread(this::bindUpdateBanner);
+                runOnUiThread(() -> {
+                    bindUpdateBanner();
+                    if (sessionManager.isAutoUpdateEnabled() && appUpdateManager.hasDownloadedApk()) {
+                        openBestUpdateAction();
+                    }
+                });
                 PunchWidgetProvider.refreshAll(this);
             } catch (Exception ignored) {
             }

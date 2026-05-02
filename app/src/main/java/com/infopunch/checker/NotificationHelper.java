@@ -26,26 +26,28 @@ public class NotificationHelper {
         ensureNotificationChannel(context, CHANNEL_APP_UPDATE, "Mises a jour de l'application", null);
     }
 
-    public static void showNewPunchNotification(Context context, String accountId, String accountName, String text, String ringtoneUri) {
+    public static void showNewPunchNotification(Context context, String accountId, String accountName, String text, String ringtoneUri, boolean soundEnabled) {
         showNotification(
                 context,
                 accountId,
                 accountName,
                 "Nouveau poincon",
                 text,
-                ringtoneUri,
+                soundEnabled ? ringtoneUri : "",
+                soundEnabled,
                 false
         );
     }
 
-    public static void showMissingPunchNotification(Context context, String accountId, String accountName, String text, String ringtoneUri) {
+    public static void showMissingPunchNotification(Context context, String accountId, String accountName, String text, String ringtoneUri, boolean soundEnabled) {
         showNotification(
                 context,
                 accountId,
                 accountName,
                 "Poincon manquant",
                 text,
-                ringtoneUri,
+                soundEnabled ? ringtoneUri : "",
+                soundEnabled,
                 true
         );
     }
@@ -87,6 +89,7 @@ public class NotificationHelper {
             String title,
             String text,
             String ringtoneUri,
+            boolean soundEnabled,
             boolean highPriority
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
@@ -95,12 +98,12 @@ public class NotificationHelper {
             return;
         }
 
-        String channelId = buildChannelId(highPriority, ringtoneUri);
+        String channelId = buildChannelId(highPriority, soundEnabled ? ringtoneUri : "silent");
         ensureNotificationChannel(
                 context,
                 channelId,
                 highPriority ? "Alertes de poincon manquant" : "Nouveaux poincons",
-                ringtoneUri
+                soundEnabled ? ringtoneUri : "silent"
         );
 
         Intent intent = new Intent(context, MainActivity.class);
@@ -127,7 +130,7 @@ public class NotificationHelper {
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true);
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && ringtoneUri != null && !ringtoneUri.isEmpty()) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && soundEnabled && ringtoneUri != null && !ringtoneUri.isEmpty()) {
             builder.setSound(Uri.parse(ringtoneUri));
         }
 
@@ -166,7 +169,9 @@ public class NotificationHelper {
         );
         channel.setDescription(channelName);
 
-        if (ringtoneUri != null && !ringtoneUri.isEmpty()) {
+        if ("silent".equals(ringtoneUri)) {
+            channel.setSound(null, null);
+        } else if (ringtoneUri != null && !ringtoneUri.isEmpty()) {
             AudioAttributes attributes = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .build();

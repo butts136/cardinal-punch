@@ -31,6 +31,7 @@ public class SessionManager {
     private static final String KEY_UPDATE_DOWNLOADED_PATH = "update_downloaded_path";
     private static final String KEY_UPDATE_LAST_CHECK = "update_last_check";
     private static final String KEY_AUTO_UPDATE_ENABLED = "auto_update_enabled";
+    private static final String KEY_THEME_NAME = "theme_name";
 
     // Legacy keys for one-time migration.
     private static final String KEY_API_URL = "api_url";
@@ -91,6 +92,7 @@ public class SessionManager {
                 existing != null ? existing.realtimeMonitorEnabled : true,
                 existing != null ? existing.backgroundMonitorEnabled : true,
                 existing != null ? existing.notificationRingtone : "",
+                existing == null || existing.notificationSoundEnabled,
                 existing != null ? existing.pendingOutSinceEpochMs : 0L,
                 existing != null && existing.missingPunchAlerted,
                 existing != null ? existing.lastNotifiedPunchSignature : "",
@@ -359,10 +361,36 @@ public class SessionManager {
         return current != null ? current.notificationRingtone : "";
     }
 
+    public synchronized boolean isNotificationSoundEnabled(String accountId) {
+        SessionData current = findAccount(accountId);
+        return current == null || current.notificationSoundEnabled;
+    }
+
     public synchronized void setNotificationRingtone(String ringtoneUri) {
         SessionData current = getSession();
         if (current != null) {
             upsertAccount(current.withNotificationRingtone(ringtoneUri));
+        }
+    }
+
+    public synchronized void setNotificationSoundEnabled(boolean enabled) {
+        SessionData current = getSession();
+        if (current != null) {
+            upsertAccount(current.withNotificationSound(enabled));
+        }
+    }
+
+    public synchronized void setAccountNotificationsEnabled(String accountId, boolean enabled) {
+        SessionData current = findAccount(accountId);
+        if (current != null) {
+            upsertAccount(current.withNotifications(enabled));
+        }
+    }
+
+    public synchronized void setAccountNotificationSoundEnabled(String accountId, boolean enabled) {
+        SessionData current = findAccount(accountId);
+        if (current != null) {
+            upsertAccount(current.withNotificationSound(enabled));
         }
     }
 
@@ -455,6 +483,17 @@ public class SessionManager {
         preferences.edit().putBoolean(KEY_AUTO_UPDATE_ENABLED, enabled).apply();
     }
 
+    public synchronized String getThemeName() {
+        return preferences.getString(KEY_THEME_NAME, ThemeManager.THEME_GREEN);
+    }
+
+    public synchronized void setThemeName(String themeName) {
+        preferences.edit().putString(
+                KEY_THEME_NAME,
+                themeName == null || themeName.trim().isEmpty() ? ThemeManager.THEME_GREEN : themeName.trim()
+        ).apply();
+    }
+
     private void migrateLegacyIfNeeded() {
         if (preferences.contains(KEY_ACCOUNTS_JSON)) {
             return;
@@ -483,6 +522,7 @@ public class SessionManager {
                 preferences.getBoolean(KEY_REALTIME_MONITOR_ENABLED, true),
                 preferences.getBoolean(KEY_BACKGROUND_MONITOR_ENABLED, true),
                 "",
+                true,
                 0L,
                 false,
                 "",
@@ -556,6 +596,7 @@ public class SessionManager {
         public final boolean realtimeMonitorEnabled;
         public final boolean backgroundMonitorEnabled;
         public final String notificationRingtone;
+        public final boolean notificationSoundEnabled;
         public final long pendingOutSinceEpochMs;
         public final boolean missingPunchAlerted;
         public final String lastNotifiedPunchSignature;
@@ -577,6 +618,7 @@ public class SessionManager {
                 boolean realtimeMonitorEnabled,
                 boolean backgroundMonitorEnabled,
                 String notificationRingtone,
+                boolean notificationSoundEnabled,
                 long pendingOutSinceEpochMs,
                 boolean missingPunchAlerted,
                 String lastNotifiedPunchSignature,
@@ -597,6 +639,7 @@ public class SessionManager {
             this.realtimeMonitorEnabled = realtimeMonitorEnabled;
             this.backgroundMonitorEnabled = backgroundMonitorEnabled;
             this.notificationRingtone = notificationRingtone;
+            this.notificationSoundEnabled = notificationSoundEnabled;
             this.pendingOutSinceEpochMs = pendingOutSinceEpochMs;
             this.missingPunchAlerted = missingPunchAlerted;
             this.lastNotifiedPunchSignature = lastNotifiedPunchSignature == null ? "" : lastNotifiedPunchSignature;
@@ -607,7 +650,7 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
                     signature, lastPunchTime, notificationsEnabled, realtimeMonitorEnabled, backgroundMonitorEnabled,
-                    notificationRingtone, pendingOutSinceEpochMs, missingPunchAlerted,
+                    notificationRingtone, notificationSoundEnabled, pendingOutSinceEpochMs, missingPunchAlerted,
                     lastNotifiedPunchSignature, lastMissingPunchAlertKey
             );
         }
@@ -616,7 +659,7 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, enabled, fullName, userId, sitePath, hoursLink,
                     lastPunchSignature, lastPunchTime, notificationsEnabled, realtimeMonitorEnabled, backgroundMonitorEnabled,
-                    notificationRingtone, pendingOutSinceEpochMs, missingPunchAlerted,
+                    notificationRingtone, notificationSoundEnabled, pendingOutSinceEpochMs, missingPunchAlerted,
                     lastNotifiedPunchSignature, lastMissingPunchAlertKey
             );
         }
@@ -625,7 +668,7 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
                     lastPunchSignature, lastPunchTime, enabled, realtimeMonitorEnabled, backgroundMonitorEnabled,
-                    notificationRingtone, pendingOutSinceEpochMs, missingPunchAlerted,
+                    notificationRingtone, notificationSoundEnabled, pendingOutSinceEpochMs, missingPunchAlerted,
                     lastNotifiedPunchSignature, lastMissingPunchAlertKey
             );
         }
@@ -634,7 +677,7 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
                     lastPunchSignature, lastPunchTime, notificationsEnabled, enabled, backgroundMonitorEnabled,
-                    notificationRingtone, pendingOutSinceEpochMs, missingPunchAlerted,
+                    notificationRingtone, notificationSoundEnabled, pendingOutSinceEpochMs, missingPunchAlerted,
                     lastNotifiedPunchSignature, lastMissingPunchAlertKey
             );
         }
@@ -643,7 +686,7 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
                     lastPunchSignature, lastPunchTime, notificationsEnabled, realtimeMonitorEnabled, enabled,
-                    notificationRingtone, pendingOutSinceEpochMs, missingPunchAlerted,
+                    notificationRingtone, notificationSoundEnabled, pendingOutSinceEpochMs, missingPunchAlerted,
                     lastNotifiedPunchSignature, lastMissingPunchAlertKey
             );
         }
@@ -652,7 +695,16 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
                     lastPunchSignature, lastPunchTime, notificationsEnabled, realtimeMonitorEnabled, backgroundMonitorEnabled,
-                    ringtoneUri == null ? "" : ringtoneUri, pendingOutSinceEpochMs, missingPunchAlerted,
+                    ringtoneUri == null ? "" : ringtoneUri, notificationSoundEnabled, pendingOutSinceEpochMs, missingPunchAlerted,
+                    lastNotifiedPunchSignature, lastMissingPunchAlertKey
+            );
+        }
+
+        public SessionData withNotificationSound(boolean enabled) {
+            return new SessionData(
+                    accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
+                    lastPunchSignature, lastPunchTime, notificationsEnabled, realtimeMonitorEnabled, backgroundMonitorEnabled,
+                    notificationRingtone, enabled, pendingOutSinceEpochMs, missingPunchAlerted,
                     lastNotifiedPunchSignature, lastMissingPunchAlertKey
             );
         }
@@ -661,7 +713,7 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
                     lastPunchSignature, lastPunchTime, notificationsEnabled, realtimeMonitorEnabled, backgroundMonitorEnabled,
-                    notificationRingtone, epochMs, alerted, lastNotifiedPunchSignature, lastMissingPunchAlertKey
+                    notificationRingtone, notificationSoundEnabled, epochMs, alerted, lastNotifiedPunchSignature, lastMissingPunchAlertKey
             );
         }
 
@@ -669,7 +721,7 @@ public class SessionManager {
             return new SessionData(
                     accountId, apiUrl, companyCode, nip, protectionEnabled, fullName, userId, sitePath, hoursLink,
                     lastPunchSignature, lastPunchTime, notificationsEnabled, realtimeMonitorEnabled, backgroundMonitorEnabled,
-                    notificationRingtone, pendingOutSinceEpochMs, missingPunchAlerted, notifiedPunchSignature, missingPunchAlertKey
+                    notificationRingtone, notificationSoundEnabled, pendingOutSinceEpochMs, missingPunchAlerted, notifiedPunchSignature, missingPunchAlertKey
             );
         }
 
@@ -691,6 +743,7 @@ public class SessionManager {
                 object.put("realtimeMonitorEnabled", realtimeMonitorEnabled);
                 object.put("backgroundMonitorEnabled", backgroundMonitorEnabled);
                 object.put("notificationRingtone", notificationRingtone);
+                object.put("notificationSoundEnabled", notificationSoundEnabled);
                 object.put("pendingOutSinceEpochMs", pendingOutSinceEpochMs);
                 object.put("missingPunchAlerted", missingPunchAlerted);
                 object.put("lastNotifiedPunchSignature", lastNotifiedPunchSignature);
@@ -717,6 +770,7 @@ public class SessionManager {
                     object.optBoolean("realtimeMonitorEnabled", true),
                     object.optBoolean("backgroundMonitorEnabled", true),
                     object.optString("notificationRingtone"),
+                    object.optBoolean("notificationSoundEnabled", true),
                     object.optLong("pendingOutSinceEpochMs", 0L),
                     object.optBoolean("missingPunchAlerted", false),
                     object.optString("lastNotifiedPunchSignature"),

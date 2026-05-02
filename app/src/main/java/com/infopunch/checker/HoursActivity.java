@@ -49,6 +49,7 @@ public class HoursActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_hours);
+        ThemeManager.apply(this);
 
         progressBar = findViewById(R.id.progressBar);
         rangeView = findViewById(R.id.rangeView);
@@ -89,6 +90,12 @@ public class HoursActivity extends AppCompatActivity {
         if (realtimeMonitor != null) {
             realtimeMonitor.start();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        ThemeManager.apply(this);
     }
 
     @Override
@@ -218,22 +225,7 @@ public class HoursActivity extends AppCompatActivity {
             empty.setTextColor(getColor(R.color.text_secondary));
             card.addView(empty);
         } else {
-            for (String line : buildPunchLines(day.shifts)) {
-                TextView shiftView = new TextView(this);
-                shiftView.setText(line);
-                shiftView.setTextColor(getColor(R.color.text_primary));
-                shiftView.setBackgroundResource(android.R.color.transparent);
-                shiftView.setPadding(18, 15, 18, 15);
-                shiftView.setTextSize(15f);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                );
-                params.bottomMargin = 8;
-                shiftView.setLayoutParams(params);
-                shiftView.setBackgroundResource(isEntryLine(line) ? R.drawable.bg_shift_entry : R.drawable.bg_shift_exit);
-                card.addView(shiftView);
-            }
+            card.addView(createPunchTable(day.shifts));
         }
 
         Button noteButton = new Button(this);
@@ -256,20 +248,40 @@ public class HoursActivity extends AppCompatActivity {
         return card;
     }
 
-    private List<String> buildPunchLines(List<String> shifts) {
-        List<String> lines = new ArrayList<>();
-        for (String shift : shifts) {
-            String[] parts = shift.split("-");
-            String entry = parts.length > 0 ? parts[0].trim() : "--:--";
-            String exit = parts.length > 1 ? parts[1].trim() : "--:--";
-            lines.add(getString(R.string.hours_entry) + " : " + entry);
-            lines.add(getString(R.string.hours_exit) + " : " + exit);
+    private View createPunchTable(List<String> shifts) {
+        LinearLayout table = new LinearLayout(this);
+        table.setOrientation(LinearLayout.VERTICAL);
+        table.setBackgroundResource(R.drawable.bg_card_secondary);
+        table.setPadding(18, 14, 18, 14);
+
+        LinearLayout header = createPunchRow(getString(R.string.hours_entry), getString(R.string.hours_exit), true);
+        table.addView(header);
+        for (PunchDisplay.Pair pair : PunchDisplay.parsePairs(shifts)) {
+            table.addView(createPunchRow(pair.entry, pair.exit, false));
         }
-        return lines;
+        return table;
     }
 
-    private boolean isEntryLine(String line) {
-        return line != null && line.startsWith(getString(R.string.hours_entry));
+    private LinearLayout createPunchRow(String entry, String exit, boolean header) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, header ? 0 : 8, 0, header ? 8 : 6);
+        row.addView(createPunchCell(entry, header));
+        row.addView(createPunchCell(exit, header));
+        return row;
+    }
+
+    private TextView createPunchCell(String text, boolean header) {
+        TextView cell = new TextView(this);
+        cell.setText(text);
+        cell.setTextSize(header ? 13f : 18f);
+        cell.setTextColor(getColor(header ? R.color.text_secondary : R.color.text_primary));
+        if (header) {
+            cell.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        }
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        cell.setLayoutParams(params);
+        return cell;
     }
 
     private void openNoteDialog(LocalDate date) {
@@ -286,8 +298,31 @@ public class HoursActivity extends AppCompatActivity {
                 .setTitle(getString(R.string.hours_note_dialog_title) + " " + date)
                 .setView(input)
                 .setPositiveButton(R.string.hours_note_send, (dialog, which) -> sendNote(date, input.getText().toString().trim()))
+                .setNeutralButton(R.string.hours_note_send_tests, (dialog, which) -> sendNoteTests(date, input.getText().toString().trim()))
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
+    }
+
+    private void sendNoteTests(LocalDate date, String note) {
+        if (note.isEmpty()) {
+            showMessage("La note est vide.");
+            return;
+        }
+        setLoading(true);
+        executorService.execute(() -> {
+            try {
+                List<String> responses = hoursRepository.sendNoteTestVariants(session, date, note);
+                runOnUiThread(() -> {
+                    setLoading(false);
+                    showMessage("Tests envoyes: " + responses.size());
+                });
+            } catch (Exception exception) {
+                runOnUiThread(() -> {
+                    setLoading(false);
+                    showMessage(exception.getMessage() != null ? exception.getMessage() : "Tests impossibles.");
+                });
+            }
+        });
     }
 
     private void sendNote(LocalDate date, String note) {

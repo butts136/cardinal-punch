@@ -4,6 +4,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -16,6 +18,8 @@ import okhttp3.Response;
 public class InfoPunchClient {
     private static final String APP_ENTRY_URL = "https://app.info-punch.com";
     private static final String DEFAULT_API_BASE_URL = "https://srv5.info-punch.com:44348";
+    private static final long TOKEN_REFRESH_WINDOW_MS = 60_000L;
+    private static final Map<String, TokenCacheEntry> TOKEN_CACHE = new ConcurrentHashMap<>();
     private final OkHttpClient httpClient = new OkHttpClient();
 
     public LoginResult loginAndFetchUser(String apiBaseUrl, String companyCode, String nip) throws IOException, JSONException {
@@ -27,7 +31,19 @@ public class InfoPunchClient {
         return new LoginResult(resolvedBaseUrl, user, parameters, sitePath);
     }
 
+    public JSONObject fetchUserFast(String apiBaseUrl, String companyCode, String nip) throws IOException, JSONException {
+        String resolvedBaseUrl = resolveApiBaseUrl(apiBaseUrl);
+        String token = fetchToken(resolvedBaseUrl, companyCode);
+        return fetchUser(resolvedBaseUrl, token, nip);
+    }
+
     private String fetchToken(String apiBaseUrl, String companyCode) throws IOException, JSONException {
+        String cacheKey = apiBaseUrl + "|" + companyCode;
+        TokenCacheEntry cached = TOKEN_CACHE.get(cacheKey);
+        if (cached != null && cached.expiresAtMs - TOKEN_REFRESH_WINDOW_MS > System.currentTimeMillis()) {
+            return cached.token;
+        }
+
         RequestBody formBody = new FormBody.Builder()
                 .add("username", companyCode)
                 .add("password", companyCode)
@@ -51,6 +67,8 @@ public class InfoPunchClient {
             if (accessToken.isEmpty()) {
                 throw new IOException("Jeton OAuth absent dans la réponse.");
             }
+            int expiresIn = json.optInt("expires_in", 3600);
+            TOKEN_CACHE.put(cacheKey, new TokenCacheEntry(accessToken, System.currentTimeMillis() + expiresIn * 1000L));
             return accessToken;
         }
     }
@@ -164,6 +182,16 @@ public class InfoPunchClient {
             this.user = user;
             this.parameters = parameters;
             this.sitePath = sitePath;
+        }
+    }
+
+    private static class TokenCacheEntry {
+        final String token;
+        final long expiresAtMs;
+
+        TokenCacheEntry(String token, long expiresAtMs) {
+            this.token = token;
+            this.expiresAtMs = expiresAtMs;
         }
     }
 }

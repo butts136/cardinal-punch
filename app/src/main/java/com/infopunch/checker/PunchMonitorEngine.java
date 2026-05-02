@@ -2,13 +2,9 @@ package com.infopunch.checker;
 
 import android.content.Context;
 
-import com.infopunch.checker.hours.HoursModels;
-import com.infopunch.checker.hours.HoursRepository;
-
 import org.json.JSONObject;
 
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -43,8 +39,8 @@ public class PunchMonitorEngine {
             Callback callback
     ) throws Exception {
         InfoPunchClient client = new InfoPunchClient();
-        InfoPunchClient.LoginResult result = client.loginAndFetchUser(account.apiUrl, account.companyCode, account.nip);
-        JSONObject lastPunch = result.user.optJSONObject("LastPunch");
+        JSONObject user = client.fetchUserFast(account.apiUrl, account.companyCode, account.nip);
+        JSONObject lastPunch = user.optJSONObject("LastPunch");
         String signature = buildPunchSignature(lastPunch);
         String checkTime = lastPunch != null ? lastPunch.optString("CheckTime", "") : "";
 
@@ -55,7 +51,7 @@ public class PunchMonitorEngine {
 
         if (!signature.isEmpty() && !signature.equals(refreshed.lastPunchSignature)) {
             boolean hadPrevious = refreshed.lastPunchSignature != null && !refreshed.lastPunchSignature.isEmpty();
-            boolean isEntry = inferEntryPunch(refreshed, checkTime);
+            boolean isEntry = inferEntryPunch(refreshed, lastPunch);
             sessionManager.setLastPunchSignature(account.accountId, signature);
             sessionManager.setLastPunchTime(account.accountId, checkTime);
             if (isEntry) {
@@ -76,7 +72,8 @@ public class PunchMonitorEngine {
                         account.accountId,
                         displayAccountName(account),
                         message,
-                        sessionManager.getNotificationRingtone(account.accountId)
+                        sessionManager.getNotificationRingtone(account.accountId),
+                        sessionManager.isNotificationSoundEnabled(account.accountId)
                 );
                 if (callback != null) {
                     callback.onNotification(message);
@@ -100,7 +97,8 @@ public class PunchMonitorEngine {
                     account.accountId,
                     displayAccountName(account),
                     message,
-                    sessionManager.getNotificationRingtone(account.accountId)
+                    sessionManager.getNotificationRingtone(account.accountId),
+                    sessionManager.isNotificationSoundEnabled(account.accountId)
             );
             sessionManager.setMissingPunchAlerted(account.accountId, true);
             if (callback != null) {
@@ -110,59 +108,15 @@ public class PunchMonitorEngine {
         }
     }
 
-    private static boolean inferEntryPunch(SessionManager.SessionData account, String checkTime) {
-        try {
-            LocalDateTime dateTime = LocalDateTime.parse(checkTime, API_DATE_TIME);
-            HoursRepository repository = new HoursRepository();
-            HoursModels.WeekData weekData = repository.loadCurrentWeek(account);
-            HoursModels.DayEntry targetDay = findDay(weekData.days, dateTime.toLocalDate());
-            if (targetDay == null) {
-                return account.pendingOutSinceEpochMs == 0L;
-            }
-
-            String punchTime = dateTime.toLocalTime().toString();
-            String latestSeen = "";
-            boolean latestIsExit = false;
-
-            for (String shift : targetDay.shifts) {
-                String[] parts = shift.split("-");
-                String start = parts.length > 0 ? normalizeTime(parts[0]) : "";
-                String end = parts.length > 1 ? normalizeTime(parts[1]) : "";
-
-                if (!start.isEmpty()) {
-                    latestSeen = start;
-                    latestIsExit = false;
-                    if (punchTime.startsWith(start)) {
-                        if (end.isEmpty()) {
-                            return true;
-                        }
-                    }
-                }
-
-                if (!end.isEmpty()) {
-                    latestSeen = end;
-                    latestIsExit = true;
-                    if (punchTime.startsWith(end)) {
-                        return false;
-                    }
-                }
-            }
-
-            if (!latestSeen.isEmpty()) {
-                return !latestIsExit;
-            }
-        } catch (Exception ignored) {
+    private static boolean inferEntryPunch(SessionManager.SessionData account, JSONObject lastPunch) {
+        String checkType = lastPunch != null ? lastPunch.optString("CheckType", "") : "";
+        if ("1".equals(checkType) || "3".equals(checkType)) {
+            return true;
+        }
+        if ("2".equals(checkType) || "4".equals(checkType)) {
+            return false;
         }
         return account.pendingOutSinceEpochMs == 0L;
-    }
-
-    private static HoursModels.DayEntry findDay(List<HoursModels.DayEntry> days, LocalDate target) {
-        for (HoursModels.DayEntry day : days) {
-            if (day.date != null && day.date.equals(target)) {
-                return day;
-            }
-        }
-        return null;
     }
 
     private static long parseEpoch(String checkTime) {
@@ -174,14 +128,6 @@ public class PunchMonitorEngine {
         } catch (Exception ignored) {
             return System.currentTimeMillis();
         }
-    }
-
-    private static String normalizeTime(String value) {
-        String normalized = value == null ? "" : value.trim();
-        if (normalized.length() >= 5) {
-            return normalized.substring(0, 5);
-        }
-        return normalized;
     }
 
     private static String formatDisplayTime(String checkTime) {

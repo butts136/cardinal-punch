@@ -206,7 +206,8 @@ public class UltraFastMonitorService extends Service {
                         accountId,
                         displayAccountName(refreshed),
                         message,
-                        sessionManager.getNotificationRingtone(accountId)
+                        sessionManager.getNotificationRingtone(accountId),
+                        sessionManager.isNotificationSoundEnabled(accountId)
                 );
             }
             PunchWidgetProvider.refreshAll(getApplicationContext());
@@ -225,7 +226,8 @@ public class UltraFastMonitorService extends Service {
                     accountId,
                     displayAccountName(refreshed),
                     "Un poincon de sortie semble manquer pour ce compte.",
-                    sessionManager.getNotificationRingtone(accountId)
+                    sessionManager.getNotificationRingtone(accountId),
+                    sessionManager.isNotificationSoundEnabled(accountId)
             );
             sessionManager.setMissingPunchAlerted(accountId, true);
             PunchWidgetProvider.refreshAll(getApplicationContext());

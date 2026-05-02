@@ -28,7 +28,7 @@ public class PunchRealtimeMonitor {
             return;
         }
         started = true;
-        scheduler.scheduleAtFixedRate(this::checkNow, 0, 10, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::checkNow, 0, 3, TimeUnit.SECONDS);
     }
 
     public void stop() {

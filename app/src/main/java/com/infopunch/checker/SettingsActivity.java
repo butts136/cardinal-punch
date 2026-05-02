@@ -12,6 +12,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -42,6 +44,7 @@ public class SettingsActivity extends AppCompatActivity {
     private EditText nipInput;
     private SwitchMaterial biometricSwitch;
     private SwitchMaterial notificationsSwitch;
+    private SwitchMaterial soundSwitch;
     private SwitchMaterial realtimeSwitch;
     private SwitchMaterial backgroundSwitch;
     private SwitchMaterial ultraFastSwitch;
@@ -50,6 +53,7 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView ringtoneValueView;
     private TextView updateStatusView;
     private SwitchMaterial autoUpdateSwitch;
+    private Spinner themeSpinner;
     private boolean updating = false;
 
     private final ActivityResultLauncher<Intent> ringtonePickerLauncher =
@@ -66,6 +70,7 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+        ThemeManager.apply(this);
 
         activeAccountView = findViewById(R.id.activeAccountView);
         accountsContainer = findViewById(R.id.accountsContainer);
@@ -73,6 +78,7 @@ public class SettingsActivity extends AppCompatActivity {
         nipInput = findViewById(R.id.nipInput);
         biometricSwitch = findViewById(R.id.biometricSwitch);
         notificationsSwitch = findViewById(R.id.notificationsSwitch);
+        soundSwitch = findViewById(R.id.soundSwitch);
         realtimeSwitch = findViewById(R.id.realtimeSwitch);
         backgroundSwitch = findViewById(R.id.backgroundSwitch);
         ultraFastSwitch = findViewById(R.id.ultraFastSwitch);
@@ -81,6 +87,7 @@ public class SettingsActivity extends AppCompatActivity {
         ringtoneValueView = findViewById(R.id.ringtoneValueView);
         updateStatusView = findViewById(R.id.updateStatusView);
         autoUpdateSwitch = findViewById(R.id.autoUpdateSwitch);
+        themeSpinner = findViewById(R.id.themeSpinner);
         View updateSection = findViewById(R.id.updateSection);
         View bridgeSection = findViewById(R.id.bridgeSection);
         Button addAccountButton = findViewById(R.id.addAccountButton);
@@ -112,6 +119,7 @@ public class SettingsActivity extends AppCompatActivity {
             bridgeSection.setVisibility(View.GONE);
         }
 
+        setupThemeSpinner();
         bindValues();
 
         biometricSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -134,6 +142,13 @@ public class SettingsActivity extends AppCompatActivity {
             if (isChecked) {
                 requestNotificationPermissionIfNeeded();
             }
+        });
+
+        soundSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (updating) {
+                return;
+            }
+            sessionManager.setNotificationSoundEnabled(isChecked);
         });
 
         realtimeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -197,6 +212,22 @@ public class SettingsActivity extends AppCompatActivity {
             sessionManager.setAutoUpdateEnabled(isChecked);
         });
 
+        themeSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (updating) {
+                    return;
+                }
+                sessionManager.setThemeName(themeValueForPosition(position));
+                ThemeManager.apply(SettingsActivity.this);
+                PunchWidgetProvider.refreshAll(SettingsActivity.this);
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+            }
+        });
+
         addAccountButton.setOnClickListener(v -> addOrUpdateAccount());
         pickRingtoneButton.setOnClickListener(v -> pickRingtone());
         resetRingtoneButton.setOnClickListener(v -> {
@@ -211,6 +242,12 @@ public class SettingsActivity extends AppCompatActivity {
         checkUpdatesButton.setOnClickListener(v -> checkUpdatesNow());
         installUpdateButton.setOnClickListener(v -> openBestUpdateAction());
         logoutButton.setOnClickListener(v -> disconnectCurrentAccount());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        ThemeManager.apply(this);
     }
 
     private void bindValues() {
@@ -233,12 +270,14 @@ public class SettingsActivity extends AppCompatActivity {
                 : "Appareil deja associe - entre un code pour re-associer");
         biometricSwitch.setChecked(current.protectionEnabled);
         notificationsSwitch.setChecked(current.notificationsEnabled);
+        soundSwitch.setChecked(current.notificationSoundEnabled);
         realtimeSwitch.setChecked(current.realtimeMonitorEnabled);
         backgroundSwitch.setChecked(current.backgroundMonitorEnabled);
         ultraFastSwitch.setChecked(sessionManager.isUltraFastEnabled());
         autoUpdateSwitch.setChecked(sessionManager.isAutoUpdateEnabled());
         ringtoneValueView.setText(resolveRingtoneTitle(current.notificationRingtone));
         updateStatusView.setText(buildUpdateStatusText());
+        themeSpinner.setSelection(positionForTheme(sessionManager.getThemeName()));
         renderAccounts(sessionManager.getAccounts(), current.accountId);
         updating = false;
     }
@@ -246,30 +285,87 @@ public class SettingsActivity extends AppCompatActivity {
     private void renderAccounts(List<SessionManager.SessionData> accounts, String activeAccountId) {
         accountsContainer.removeAllViews();
         for (SessionManager.SessionData account : accounts) {
-            Button button = new Button(this);
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(14, 12, 14, 12);
+            card.setBackgroundResource(R.drawable.bg_card_secondary);
+
+            TextView labelView = new TextView(this);
             String label = account.fullName + " (" + account.companyCode + " / " + account.nip + ")";
             if (account.accountId.equals(activeAccountId)) {
-                label = "Actif - " + label;
-                button.setBackgroundResource(R.drawable.bg_button_primary);
-                button.setTextColor(getColor(android.R.color.white));
-            } else {
-                button.setBackgroundResource(R.drawable.bg_button_secondary);
-                button.setTextColor(getColor(R.color.text_primary));
+                label = "Compte par defaut - " + label;
             }
-            button.setText(label);
-            button.setAllCaps(false);
-            button.setOnClickListener(v -> {
-                sessionManager.setActiveAccount(account.accountId);
-                bindValues();
-            });
+            labelView.setText(label);
+            labelView.setTextColor(getColor(R.color.text_primary));
+            labelView.setTextSize(15f);
+            card.addView(labelView);
+
+            if (!account.accountId.equals(activeAccountId)) {
+                Button defaultButton = new Button(this);
+                defaultButton.setText("Definir par defaut");
+                defaultButton.setAllCaps(false);
+                defaultButton.setBackgroundResource(R.drawable.bg_button_secondary);
+                defaultButton.setTextColor(getColor(R.color.text_primary));
+                defaultButton.setOnClickListener(v -> {
+                    sessionManager.setActiveAccount(account.accountId);
+                    bindValues();
+                });
+                card.addView(defaultButton);
+            }
+
+            SwitchMaterial accountNotifications = new SwitchMaterial(this);
+            accountNotifications.setText("Notifications");
+            accountNotifications.setTextColor(getColor(R.color.text_primary));
+            accountNotifications.setChecked(account.notificationsEnabled);
+            accountNotifications.setOnCheckedChangeListener((buttonView, isChecked) -> sessionManager.setAccountNotificationsEnabled(account.accountId, isChecked));
+            card.addView(accountNotifications);
+
+            SwitchMaterial accountSound = new SwitchMaterial(this);
+            accountSound.setText("Son");
+            accountSound.setTextColor(getColor(R.color.text_primary));
+            accountSound.setChecked(account.notificationSoundEnabled);
+            accountSound.setOnCheckedChangeListener((buttonView, isChecked) -> sessionManager.setAccountNotificationSoundEnabled(account.accountId, isChecked));
+            card.addView(accountSound);
+
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
             );
             params.bottomMargin = 8;
-            button.setLayoutParams(params);
-            accountsContainer.addView(button);
+            card.setLayoutParams(params);
+            accountsContainer.addView(card);
         }
+    }
+
+    private void setupThemeSpinner() {
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                new String[]{"Clair", "Sombre", "Rouge", "Bleu", "Vert", "Gris"}
+        );
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        themeSpinner.setAdapter(adapter);
+    }
+
+    private String themeValueForPosition(int position) {
+        switch (position) {
+            case 0: return ThemeManager.THEME_LIGHT;
+            case 1: return ThemeManager.THEME_DARK;
+            case 2: return ThemeManager.THEME_RED;
+            case 3: return ThemeManager.THEME_BLUE;
+            case 5: return ThemeManager.THEME_GRAY;
+            case 4:
+            default: return ThemeManager.THEME_GREEN;
+        }
+    }
+
+    private int positionForTheme(String theme) {
+        if (ThemeManager.THEME_LIGHT.equals(theme)) return 0;
+        if (ThemeManager.THEME_DARK.equals(theme)) return 1;
+        if (ThemeManager.THEME_RED.equals(theme)) return 2;
+        if (ThemeManager.THEME_BLUE.equals(theme)) return 3;
+        if (ThemeManager.THEME_GRAY.equals(theme)) return 5;
+        return 4;
     }
 
     private void addOrUpdateAccount() {
