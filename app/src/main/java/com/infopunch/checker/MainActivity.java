@@ -101,6 +101,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             showLoginScreen();
         }
+        startInstantMonitorIfEnabled();
     }
 
     @Override
@@ -118,6 +119,10 @@ public class MainActivity extends AppCompatActivity {
         }
         SessionManager.SessionData session = sessionManager.getSession();
         if (session == null || hasUnlockedCurrentSession) {
+            return;
+        }
+        if (menuContainer != null && menuContainer.getVisibility() == View.VISIBLE) {
+            hasUnlockedCurrentSession = true;
             return;
         }
         if (session.protectionEnabled) {
@@ -456,6 +461,17 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+    }
+
+    private void startInstantMonitorIfEnabled() {
+        if (!BuildConfig.ULTRA_FAST_BRIDGE_ENABLED || !sessionManager.isUltraFastEnabled()) {
+            return;
+        }
+        try {
+            UltraFastMonitorService.start(this);
+        } catch (Exception ignored) {
+            PunchMonitorScheduler.schedule(this);
+        }
     }
 
     @Override

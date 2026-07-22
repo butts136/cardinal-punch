@@ -1,8 +1,12 @@
 package com.infopunch.checker;
 
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -19,7 +23,6 @@ import com.infopunch.checker.hours.HoursRepository;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -191,95 +194,161 @@ public class HoursActivity extends AppCompatActivity {
     }
 
     private View createDayView(HoursModels.DayEntry day) {
+        ThemeManager.Palette palette = ThemeManager.palette(this);
         LinearLayout card = new LinearLayout(this);
+        card.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(26, 22, 22, 22);
+        card.setPadding(dp(16), dp(16), dp(16), dp(16));
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        cardParams.bottomMargin = 20;
+        cardParams.bottomMargin = dp(20);
         card.setLayoutParams(cardParams);
-        card.setBackgroundResource(R.drawable.bg_day_card);
+        card.setBackground(rounded(palette.surface, palette.border, 28, 1));
 
         TextView title = new TextView(this);
         title.setText(day.date != null ? capitalize(day.date.format(dateFormatter)) : day.weekday + " " + day.dayLabel);
         title.setTextSize(19f);
-        title.setTextColor(getColor(R.color.text_primary));
+        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setTextColor(palette.text);
         card.addView(title);
 
-        TextView totals = new TextView(this);
-        totals.setText(
-                "Regulier: " + safe(day.regularHours)
-                        + "\nSurtemps: " + safe(day.overtimeHours)
-                        + "\nTotal: " + HoursModels.formatMinutes(day.getTotalMinutes())
-        );
-        totals.setTextColor(getColor(R.color.text_secondary));
-        totals.setTextSize(13f);
-        totals.setPadding(0, 10, 0, 16);
-        card.addView(totals);
+        card.addView(createSummary(day, palette));
 
         if (day.shifts.isEmpty()) {
             TextView empty = new TextView(this);
+            empty.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
             empty.setText(getString(R.string.hours_no_punches_day));
-            empty.setTextColor(getColor(R.color.text_secondary));
+            empty.setTextColor(palette.textSecondary);
+            empty.setTextSize(14f);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(12), dp(20), dp(12), dp(20));
+            empty.setBackground(rounded(palette.surfaceSecondary, palette.border, 20, 1));
             card.addView(empty);
         } else {
-            card.addView(createPunchTable(day.shifts));
+            card.addView(createPunchTable(day.shifts, palette));
         }
 
         Button noteButton = new Button(this);
+        noteButton.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
         noteButton.setText(R.string.hours_note_button);
         noteButton.setAllCaps(false);
-        noteButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        noteButton.setTextColor(getColor(R.color.text_secondary));
-        noteButton.setBackgroundResource(R.drawable.bg_button_secondary);
+        noteButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        noteButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        noteButton.setTextColor(Color.WHITE);
+        noteButton.setBackground(rounded(palette.accent, palette.accent, 20, 0));
         noteButton.setCompoundDrawablesRelativeWithIntrinsicBounds(android.R.drawable.ic_menu_edit, 0, 0, 0);
-        noteButton.setCompoundDrawablePadding(12);
+        noteButton.setCompoundDrawablePadding(dp(10));
+        noteButton.setPadding(dp(14), dp(14), dp(14), dp(14));
         noteButton.setOnClickListener(v -> openNoteDialog(day.date));
         LinearLayout.LayoutParams noteParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        noteParams.topMargin = 8;
+        noteParams.topMargin = dp(16);
         noteButton.setLayoutParams(noteParams);
         card.addView(noteButton);
 
         return card;
     }
 
-    private View createPunchTable(List<String> shifts) {
-        LinearLayout table = new LinearLayout(this);
-        table.setOrientation(LinearLayout.VERTICAL);
-        table.setBackgroundResource(R.drawable.bg_card_secondary);
-        table.setPadding(18, 14, 18, 14);
+    private View createSummary(HoursModels.DayEntry day, ThemeManager.Palette palette) {
+        LinearLayout summary = new LinearLayout(this);
+        summary.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
+        summary.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, dp(14), 0, dp(14));
+        summary.setLayoutParams(params);
+        summary.addView(createSummaryCard("Temps regulier :", safe(day.regularHours), palette, 0));
+        summary.addView(createSummaryCard("Surtemps :", safe(day.overtimeHours), palette, 1));
+        summary.addView(createSummaryCard("Total :", HoursModels.formatMinutes(day.getTotalMinutes()), palette, 2));
+        return summary;
+    }
 
-        LinearLayout header = createPunchRow(getString(R.string.hours_entry), getString(R.string.hours_exit), true);
+    private View createSummaryCard(String label, String value, ThemeManager.Palette palette, int index) {
+        LinearLayout card = new LinearLayout(this);
+        card.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(6), dp(10), dp(6), dp(10));
+        card.setBackground(rounded(palette.surfaceSecondary, palette.border, 16, 1));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        if (index > 0) {
+            params.leftMargin = dp(8);
+        }
+        card.setLayoutParams(params);
+
+        TextView labelView = new TextView(this);
+        labelView.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
+        labelView.setText(label);
+        labelView.setGravity(Gravity.CENTER);
+        labelView.setTextColor(palette.textSecondary);
+        labelView.setTextSize(11f);
+        labelView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        card.addView(labelView);
+
+        TextView valueView = new TextView(this);
+        valueView.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
+        valueView.setText(value);
+        valueView.setGravity(Gravity.CENTER);
+        valueView.setTextColor(palette.text);
+        valueView.setTextSize(17f);
+        valueView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        card.addView(valueView);
+        return card;
+    }
+
+    private View createPunchTable(List<String> shifts, ThemeManager.Palette palette) {
+        LinearLayout table = new LinearLayout(this);
+        table.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
+        table.setOrientation(LinearLayout.VERTICAL);
+        table.setBackground(rounded(palette.surfaceSecondary, palette.border, 22, 1));
+        table.setPadding(dp(10), dp(10), dp(10), dp(10));
+
+        LinearLayout header = createPunchRow("Entrant", "Sortant", true, palette);
         table.addView(header);
         for (PunchDisplay.Pair pair : PunchDisplay.parsePairs(shifts)) {
-            table.addView(createPunchRow(pair.entry, pair.exit, false));
+            table.addView(createPunchRow(pair.entry, pair.exit, false, palette));
         }
         return table;
     }
 
-    private LinearLayout createPunchRow(String entry, String exit, boolean header) {
+    private LinearLayout createPunchRow(String entry, String exit, boolean header, ThemeManager.Palette palette) {
         LinearLayout row = new LinearLayout(this);
+        row.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, header ? 0 : 8, 0, header ? 8 : 6);
-        row.addView(createPunchCell(entry, header));
-        row.addView(createPunchCell(exit, header));
+        row.setPadding(0, header ? 0 : dp(8), 0, header ? dp(8) : dp(4));
+        row.addView(createPunchCell(entry, header, true, palette));
+        row.addView(createPunchCell(exit, header, false, palette));
         return row;
     }
 
-    private TextView createPunchCell(String text, boolean header) {
+    private TextView createPunchCell(String text, boolean header, boolean entryCell, ThemeManager.Palette palette) {
         TextView cell = new TextView(this);
+        cell.setTag(ThemeManager.TAG_KEEP_CUSTOM_THEME);
         cell.setText(text);
-        cell.setTextSize(header ? 13f : 18f);
-        cell.setTextColor(getColor(header ? R.color.text_secondary : R.color.text_primary));
+        cell.setGravity(Gravity.CENTER);
+        cell.setMinHeight(header ? dp(42) : dp(58));
+        cell.setTextSize(header ? 15f : 22f);
+        cell.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         if (header) {
-            cell.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            cell.setTextColor(Color.WHITE);
+            cell.setBackground(rounded(entryCell ? 0xFF16A34A : 0xFFDC2626, entryCell ? 0xFF22C55E : 0xFFF97316, 18, 0));
+        } else if ("--:--".equals(text)) {
+            cell.setTextColor(palette.textSecondary);
+            cell.setBackground(rounded(palette.surface, palette.border, 18, 1));
+        } else {
+            cell.setTextColor(palette.text);
+            cell.setBackground(rounded(palette.surface, palette.border, 18, 1));
         }
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        if (!entryCell) {
+            params.leftMargin = dp(10);
+        }
         cell.setLayoutParams(params);
         return cell;
     }
@@ -355,6 +424,24 @@ public class HoursActivity extends AppCompatActivity {
 
     private String safe(String value) {
         return value == null || value.isEmpty() ? "-" : value;
+    }
+
+    private GradientDrawable rounded(int color, int borderColor, int radiusDp, int strokeDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        if (strokeDp > 0) {
+            drawable.setStroke(dp(strokeDp), borderColor);
+        }
+        return drawable;
+    }
+
+    private int dp(int value) {
+        return Math.round(TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                value,
+                getResources().getDisplayMetrics()
+        ));
     }
 
     private String capitalize(String value) {

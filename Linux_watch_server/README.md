@@ -12,13 +12,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2. Code de pairage:
+2. Cle de pairage:
 
 ```bash
-export CARDINAL_PUNCH_PAIR_CODE="123456"
+export CARDINAL_PUNCH_PAIR_CODE="une-cle-longue-et-aleatoire"
 ```
 
-Optionnel. Si tu ne definis rien, le serveur va generer automatiquement un code a 6 chiffres, l'enregistrer dans `pair_code.txt` et l'afficher au demarrage.
+Optionnel. Si tu ne definis rien, le serveur genere une cle forte dans `pair_code.txt` avec des permissions limitees au proprietaire.
 
 3. Lancer le serveur:
 
@@ -26,7 +26,7 @@ Optionnel. Si tu ne definis rien, le serveur va generer automatiquement un code 
 python3 server.py
 ```
 
-Par defaut, le serveur ecoute sur `0.0.0.0:39014`.
+Par securite, le serveur ecoute par defaut sur `127.0.0.1:39049`. Il faut le publier derriere un proxy HTTPS.
 
 Au lancement, le serveur affiche:
 
@@ -38,19 +38,21 @@ Une fois l'appareil Android associe, le serveur lui attribue un jeton interne pe
 
 ## Port conseille
 
-- En direct: `39014`
-- Recommande en production: mettre Nginx/Caddy devant et publier en `443`, puis laisser ce script ecouter en interne sur `39014`
+- Interne: `39049`
+- Production: Nginx/Caddy en HTTPS sur `443`, puis relais vers `127.0.0.1:39049`
 
-Concretement:
-
-- si tu accedes directement au script Python depuis Internet, utilise `http://46.232.211.10:39014`
-- si tu mets un reverse proxy HTTPS devant, utilise plutot `https://46.232.211.10` ou ton nom de domaine en `443`
+Le client Android refuse maintenant un relais HTTP non chiffre. Les jetons d'appareil sont envoyes dans l'en-tete `Authorization: Bearer ...`, jamais dans l'URL.
 
 ## API
 
 - `GET /health`
 - `POST /api/pair`
-- `POST /api/register_account?device_token=...`
-- `GET /api/state?device_token=...&account_id=...`
+- `POST /api/register_account`
+- `POST /api/wait_state`
+- `GET /api/state?account_id=...`
+
+Les trois routes protegees demandent l'en-tete `Authorization: Bearer <device_token>`.
+
+Le relais reutilise les jetons OAuth, interroge les comptes en parallele et separe la lecture rapide du dernier poincon de la page d'heures plus lourde. `POLL_SECONDS` accepte les decimales et vaut `0.75` par defaut.
 
 L'application Android peut enregistrer un compte depuis l'ecran Parametres puis activer le mode ultra-rapide.

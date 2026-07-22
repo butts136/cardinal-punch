@@ -1,0 +1,24 @@
+[Unit]
+Description=Cardinal Punch secure watch service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/butts136/.apps/Linux_watch_server
+ExecStart=/usr/bin/python3 /home/butts136/.apps/Linux_watch_server/server.py
+Environment=HOST=127.0.0.1
+Environment=PORT=39049
+Environment=POLL_SECONDS=0.75
+Environment=HOURS_REFRESH_SECONDS=120
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+LockPersonality=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=default.target

@@ -13,6 +13,7 @@ import java.util.Locale;
 public class PunchMonitorEngine {
     private static final DateTimeFormatter API_DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.CANADA_FRENCH);
     private static final Duration MAX_PENDING_OUT = Duration.ofHours(16);
+    private static final InfoPunchClient CLIENT = new InfoPunchClient();
 
     public interface Callback {
         void onNotification(String message);
@@ -32,14 +33,21 @@ public class PunchMonitorEngine {
         }
     }
 
+    public static void checkAccount(Context context, String accountId, Callback callback) throws Exception {
+        SessionManager sessionManager = new SessionManager(context);
+        SessionManager.SessionData account = sessionManager.findAccount(accountId);
+        if (account != null) {
+            inspectAccount(context, sessionManager, account, callback);
+        }
+    }
+
     private static void inspectAccount(
             Context context,
             SessionManager sessionManager,
             SessionManager.SessionData account,
             Callback callback
     ) throws Exception {
-        InfoPunchClient client = new InfoPunchClient();
-        JSONObject user = client.fetchUserFast(account.apiUrl, account.companyCode, account.nip);
+        JSONObject user = CLIENT.fetchUserFast(account.apiUrl, account.companyCode, account.nip);
         JSONObject lastPunch = user.optJSONObject("LastPunch");
         String signature = buildPunchSignature(lastPunch);
         String checkTime = lastPunch != null ? lastPunch.optString("CheckTime", "") : "";

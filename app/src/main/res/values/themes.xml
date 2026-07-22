@@ -7,4 +7,26 @@
         <item name="android:statusBarColor" tools:targetApi="l">@color/screen_background</item>
         <item name="android:navigationBarColor">@color/screen_background</item>
     </style>
+
+    <style name="WidgetPunchRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <style name="WidgetPunchCell">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/bg_card</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="WidgetPunchCellExit" parent="WidgetPunchCell">
+        <item name="android:layout_marginLeft">8dp</item>
+    </style>
 </resources>
