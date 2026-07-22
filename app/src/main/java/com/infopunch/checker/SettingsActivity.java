@@ -52,6 +52,7 @@ public class SettingsActivity extends AppCompatActivity {
     private EditText bridgeTokenInput;
     private TextView ringtoneValueView;
     private TextView updateStatusView;
+    private TextView contactStatusView;
     private SwitchMaterial autoUpdateSwitch;
     private Spinner themeSpinner;
     private boolean updating = false;
@@ -86,6 +87,7 @@ public class SettingsActivity extends AppCompatActivity {
         bridgeTokenInput = findViewById(R.id.bridgeTokenInput);
         ringtoneValueView = findViewById(R.id.ringtoneValueView);
         updateStatusView = findViewById(R.id.updateStatusView);
+        contactStatusView = findViewById(R.id.contactStatusView);
         autoUpdateSwitch = findViewById(R.id.autoUpdateSwitch);
         themeSpinner = findViewById(R.id.themeSpinner);
         View updateSection = findViewById(R.id.updateSection);
@@ -97,6 +99,7 @@ public class SettingsActivity extends AppCompatActivity {
         Button registerBridgeButton = findViewById(R.id.registerBridgeButton);
         Button checkUpdatesButton = findViewById(R.id.checkUpdatesButton);
         Button installUpdateButton = findViewById(R.id.installUpdateButton);
+        Button verifyContactButton = findViewById(R.id.verifyContactButton);
         Button logoutButton = findViewById(R.id.logoutButton);
 
         try {
@@ -174,26 +177,14 @@ public class SettingsActivity extends AppCompatActivity {
             if (updating) {
                 return;
             }
-            if (!BuildConfig.ULTRA_FAST_BRIDGE_ENABLED) {
-                sessionManager.setUltraFastEnabled(false);
-                bindValues();
-                return;
-            }
             sessionManager.setUltraFastEnabled(isChecked);
             if (isChecked) {
-                saveBridgeSettings();
-                if (sessionManager.getBridgeUrl().isEmpty() || sessionManager.getBridgeToken().isEmpty()) {
-                    sessionManager.setUltraFastEnabled(false);
-                    bindValues();
-                    showMessage("Associe d'abord l'appareil au serveur Linux.");
-                    return;
-                }
                 try {
                     UltraFastMonitorService.start(this);
                 } catch (Exception exception) {
                     sessionManager.setUltraFastEnabled(false);
                     bindValues();
-                    showMessage("Impossible de demarrer le mode ultra-rapide: " + exception.getClass().getSimpleName());
+                    showMessage("Impossible de demarrer la detection instantanee: " + exception.getClass().getSimpleName());
                 }
             } else {
                 UltraFastMonitorService.stop(this);
@@ -241,6 +232,7 @@ public class SettingsActivity extends AppCompatActivity {
         registerBridgeButton.setOnClickListener(v -> registerCurrentAccountToBridge());
         checkUpdatesButton.setOnClickListener(v -> checkUpdatesNow());
         installUpdateButton.setOnClickListener(v -> openBestUpdateAction());
+        verifyContactButton.setOnClickListener(v -> diagnoseContactMethod());
         logoutButton.setOnClickListener(v -> disconnectCurrentAccount());
     }
 
@@ -279,6 +271,7 @@ public class SettingsActivity extends AppCompatActivity {
         updateStatusView.setText(buildUpdateStatusText());
         themeSpinner.setSelection(positionForTheme(ThemeManager.getThemeName(this)));
         renderAccounts(sessionManager.getAccounts(), current.accountId);
+        contactStatusView.setText(getString(R.string.settings_contact_not_checked));
         updating = false;
     }
 
@@ -446,6 +439,40 @@ public class SettingsActivity extends AppCompatActivity {
         });
     }
 
+    private void diagnoseContactMethod() {
+        SessionManager.SessionData current = sessionManager.getSession();
+        if (current == null) {
+            return;
+        }
+        contactStatusView.setText(getString(R.string.settings_contact_checking));
+        executorService.execute(() -> {
+            try {
+                InfoPunchClient.CommunicationStatus status = infoPunchClient.diagnoseCommunication(
+                        current.apiUrl,
+                        current.companyCode,
+                        current.nip
+                );
+                String message;
+                if (status.messagingEnabled && status.messagingEndpointReachable) {
+                    message = getString(R.string.settings_contact_messaging_works);
+                } else if (status.punchNoteEnabled) {
+                    message = getString(R.string.settings_contact_punch_note_only);
+                } else if (status.messagingEndpointReachable) {
+                    message = getString(R.string.settings_contact_api_disabled);
+                } else {
+                    message = getString(R.string.settings_contact_none);
+                }
+                if (status.previousPunchNoteSeen) {
+                    message += " " + getString(R.string.settings_contact_previous_note_seen);
+                }
+                String finalMessage = message;
+                runOnUiThread(() -> contactStatusView.setText(finalMessage));
+            } catch (Exception exception) {
+                runOnUiThread(() -> contactStatusView.setText(getString(R.string.settings_contact_check_failed)));
+            }
+        });
+    }
+
     private void openBestUpdateAction() {
         try {
             if (!BuildConfig.EXTERNAL_UPDATES_ENABLED || appUpdateManager == null) {
@@ -480,8 +507,8 @@ public class SettingsActivity extends AppCompatActivity {
         }
         String existingDeviceToken = sessionManager.getBridgeToken();
         String pairCode = bridgeTokenInput.getText().toString().trim();
-        if (existingDeviceToken.isEmpty() && pairCode.length() != 6) {
-            showMessage("Entre le code de pairage a 6 chiffres affiche sur Linux.");
+        if (existingDeviceToken.isEmpty() && pairCode.length() < 10) {
+            showMessage("Entre la cle de pairage affichee sur le serveur Linux.");
             return;
         }
 
@@ -489,7 +516,7 @@ public class SettingsActivity extends AppCompatActivity {
             try {
                 boolean newlyPaired = false;
                 String deviceToken = existingDeviceToken;
-                if (deviceToken.isEmpty() || pairCode.length() == 6) {
+                if (deviceToken.isEmpty() || !pairCode.isEmpty()) {
                     deviceToken = bridgeClient.pairDevice(
                             bridgeUrl,
                             pairCode,

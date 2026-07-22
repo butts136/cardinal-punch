@@ -82,9 +82,8 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         applyResponsiveLayout(manager, widgetId, views);
         views.setOnClickPendingIntent(R.id.prevButton, buildActionIntent(context, widgetId, ACTION_PREVIOUS));
         views.setOnClickPendingIntent(R.id.nextButton, buildActionIntent(context, widgetId, ACTION_NEXT));
-        views.setOnClickPendingIntent(R.id.refreshButton, buildActionIntent(context, widgetId, ACTION_REFRESH));
 
-        Intent launchIntent = new Intent(context, MainActivity.class);
+        Intent launchIntent = new Intent(context, HoursActivity.class);
         PendingIntent launchPendingIntent = PendingIntent.getActivity(
                 context,
                 widgetId + 5000,
@@ -92,14 +91,17 @@ public class PunchWidgetProvider extends AppWidgetProvider {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
         views.setOnClickPendingIntent(R.id.widgetRoot, launchPendingIntent);
+        views.setOnClickPendingIntent(R.id.commentButton, launchPendingIntent);
 
         try {
             SessionManager sessionManager = new SessionManager(context);
             SessionManager.SessionData session = sessionManager.getSession();
             if (session == null) {
                 views.setTextViewText(R.id.dayTitleView, "Aucun compte actif");
-                views.setTextViewText(R.id.bankView, "");
-                views.setTextViewText(R.id.shiftsView, "Connecte un compte pour afficher les poincons.");
+                bindSummary(views, "-", "-", "-");
+                bindPunchRows(views, null);
+                views.setViewVisibility(R.id.emptyView, android.view.View.VISIBLE);
+                views.setTextViewText(R.id.emptyView, "Connecte un compte pour afficher les poincons.");
                 manager.updateAppWidget(widgetId, views);
                 return;
             }
@@ -107,7 +109,6 @@ public class PunchWidgetProvider extends AppWidgetProvider {
             HoursRepository repository = new HoursRepository();
             HoursModels.WeekData weekData = repository.loadWeekForDate(session, selectedDate);
             HoursModels.DayEntry dayEntry = findDay(weekData.days, selectedDate);
-            views.setTextViewText(R.id.accountView, session.fullName);
             if (BuildConfig.EXTERNAL_UPDATES_ENABLED) {
                 AppUpdateManager updateManager = new AppUpdateManager(context);
                 AppUpdateManager.UpdateState updateState = updateManager.getState();
@@ -121,14 +122,21 @@ public class PunchWidgetProvider extends AppWidgetProvider {
                 views.setViewVisibility(R.id.updateBannerView, android.view.View.GONE);
             }
             views.setTextViewText(R.id.dayTitleView, capitalize(selectedDate.format(TITLE_FORMAT)));
-            views.setTextViewText(R.id.bankView, "Banque : " + (weekData.currentBankHours == null ? "-" : weekData.currentBankHours));
-            views.setTextViewText(R.id.shiftsView, buildShiftText(dayEntry));
+            bindSummary(
+                    views,
+                    dayEntry != null ? safe(dayEntry.regularHours) : "-",
+                    dayEntry != null ? safe(dayEntry.overtimeHours) : "-",
+                    dayEntry != null ? HoursModels.formatMinutes(dayEntry.getTotalMinutes()) : "-"
+            );
+            bindPunchRows(views, dayEntry);
             manager.updateAppWidget(widgetId, views);
         } catch (Exception exception) {
             views.setViewVisibility(R.id.updateBannerView, android.view.View.GONE);
             views.setTextViewText(R.id.dayTitleView, capitalize(selectedDate.format(TITLE_FORMAT)));
-            views.setTextViewText(R.id.bankView, "Banque : -");
-            views.setTextViewText(R.id.shiftsView, "Chargement impossible.");
+            bindSummary(views, "-", "-", "-");
+            bindPunchRows(views, null);
+            views.setViewVisibility(R.id.emptyView, android.view.View.VISIBLE);
+            views.setTextViewText(R.id.emptyView, "Chargement impossible.");
             manager.updateAppWidget(widgetId, views);
         }
     }
@@ -154,11 +162,36 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         return null;
     }
 
-    private String buildShiftText(HoursModels.DayEntry dayEntry) {
-        if (dayEntry == null || dayEntry.shifts.isEmpty()) {
-            return "Aucun poincon visible pour cette journee.";
+    private void bindSummary(RemoteViews views, String regular, String overtime, String total) {
+        views.setTextViewText(R.id.regularValue, regular);
+        views.setTextViewText(R.id.overtimeValue, overtime);
+        views.setTextViewText(R.id.totalValue, total);
+    }
+
+    private void bindPunchRows(RemoteViews views, HoursModels.DayEntry dayEntry) {
+        int[] rows = {R.id.punchRow1, R.id.punchRow2, R.id.punchRow3};
+        int[] entries = {R.id.entry1, R.id.entry2, R.id.entry3};
+        int[] exits = {R.id.exit1, R.id.exit2, R.id.exit3};
+        List<PunchDisplay.Pair> pairs = dayEntry != null ? PunchDisplay.parsePairs(dayEntry.shifts) : java.util.Collections.emptyList();
+        boolean hasPairs = !pairs.isEmpty();
+        views.setViewVisibility(R.id.emptyView, hasPairs ? android.view.View.GONE : android.view.View.VISIBLE);
+        views.setTextViewText(R.id.emptyView, hasPairs ? "" : "Aucun poincon visible pour cette journee.");
+        for (int i = 0; i < rows.length; i++) {
+            if (i < pairs.size()) {
+                PunchDisplay.Pair pair = pairs.get(i);
+                views.setViewVisibility(rows[i], android.view.View.VISIBLE);
+                views.setTextViewText(entries[i], pair.entry);
+                views.setTextViewText(exits[i], pair.exit);
+            } else {
+                views.setViewVisibility(rows[i], android.view.View.GONE);
+                views.setTextViewText(entries[i], "");
+                views.setTextViewText(exits[i], "");
+            }
         }
-        return PunchDisplay.buildTwoColumnText(dayEntry.shifts);
+    }
+
+    private String safe(String value) {
+        return value == null || value.isEmpty() ? "-" : value;
     }
 
     private LocalDate getSelectedDate(Context context, int widgetId) {
@@ -197,30 +230,65 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         views.setViewPadding(R.id.widgetRoot, sizing.rootPaddingDp, sizing.rootPaddingDp, sizing.rootPaddingDp, sizing.rootPaddingDp);
         views.setViewPadding(R.id.prevButton, sizing.buttonHorizontalPaddingDp, sizing.buttonVerticalPaddingDp, sizing.buttonHorizontalPaddingDp, sizing.buttonVerticalPaddingDp);
         views.setViewPadding(R.id.nextButton, sizing.buttonHorizontalPaddingDp, sizing.buttonVerticalPaddingDp, sizing.buttonHorizontalPaddingDp, sizing.buttonVerticalPaddingDp);
-        views.setViewPadding(R.id.bankView, sizing.cardPaddingDp, sizing.cardPaddingDp, sizing.cardPaddingDp, sizing.cardPaddingDp);
-        views.setViewPadding(R.id.shiftsView, sizing.cardPaddingDp, sizing.cardPaddingDp, sizing.cardPaddingDp, sizing.cardPaddingDp);
-        views.setViewPadding(R.id.refreshButton, sizing.refreshHorizontalPaddingDp, sizing.refreshVerticalPaddingDp, sizing.refreshHorizontalPaddingDp, sizing.refreshVerticalPaddingDp);
+        views.setViewPadding(R.id.dateNavigation, sizing.navContainerPaddingDp, sizing.navContainerPaddingDp, sizing.navContainerPaddingDp, sizing.navContainerPaddingDp);
+        views.setViewPadding(R.id.punchTable, sizing.tablePaddingDp, sizing.tablePaddingDp, sizing.tablePaddingDp, sizing.tablePaddingDp);
+        views.setViewPadding(R.id.commentButton, sizing.commentHorizontalPaddingDp, sizing.commentVerticalPaddingDp, sizing.commentHorizontalPaddingDp, sizing.commentVerticalPaddingDp);
 
-        views.setTextViewTextSize(R.id.accountView, TypedValue.COMPLEX_UNIT_SP, sizing.accountTextSp);
         views.setTextViewTextSize(R.id.prevButton, TypedValue.COMPLEX_UNIT_SP, sizing.navTextSp);
         views.setTextViewTextSize(R.id.dayTitleView, TypedValue.COMPLEX_UNIT_SP, sizing.titleTextSp);
         views.setTextViewTextSize(R.id.nextButton, TypedValue.COMPLEX_UNIT_SP, sizing.navTextSp);
-        views.setTextViewTextSize(R.id.bankView, TypedValue.COMPLEX_UNIT_SP, sizing.bankTextSp);
-        views.setTextViewTextSize(R.id.shiftsView, TypedValue.COMPLEX_UNIT_SP, sizing.shiftsTextSp);
-        views.setTextViewTextSize(R.id.refreshButton, TypedValue.COMPLEX_UNIT_SP, sizing.refreshTextSp);
+        views.setTextViewTextSize(R.id.regularLabel, TypedValue.COMPLEX_UNIT_SP, sizing.summaryLabelTextSp);
+        views.setTextViewTextSize(R.id.overtimeLabel, TypedValue.COMPLEX_UNIT_SP, sizing.summaryLabelTextSp);
+        views.setTextViewTextSize(R.id.totalLabel, TypedValue.COMPLEX_UNIT_SP, sizing.summaryLabelTextSp);
+        views.setTextViewTextSize(R.id.regularValue, TypedValue.COMPLEX_UNIT_SP, sizing.summaryValueTextSp);
+        views.setTextViewTextSize(R.id.overtimeValue, TypedValue.COMPLEX_UNIT_SP, sizing.summaryValueTextSp);
+        views.setTextViewTextSize(R.id.totalValue, TypedValue.COMPLEX_UNIT_SP, sizing.summaryValueTextSp);
+        views.setTextViewTextSize(R.id.entryHead, TypedValue.COMPLEX_UNIT_SP, sizing.headerTextSp);
+        views.setTextViewTextSize(R.id.exitHead, TypedValue.COMPLEX_UNIT_SP, sizing.headerTextSp);
+        views.setTextViewTextSize(R.id.entry1, TypedValue.COMPLEX_UNIT_SP, sizing.punchTextSp);
+        views.setTextViewTextSize(R.id.exit1, TypedValue.COMPLEX_UNIT_SP, sizing.punchTextSp);
+        views.setTextViewTextSize(R.id.entry2, TypedValue.COMPLEX_UNIT_SP, sizing.punchTextSp);
+        views.setTextViewTextSize(R.id.exit2, TypedValue.COMPLEX_UNIT_SP, sizing.punchTextSp);
+        views.setTextViewTextSize(R.id.entry3, TypedValue.COMPLEX_UNIT_SP, sizing.punchTextSp);
+        views.setTextViewTextSize(R.id.exit3, TypedValue.COMPLEX_UNIT_SP, sizing.punchTextSp);
+        views.setTextViewTextSize(R.id.commentButton, TypedValue.COMPLEX_UNIT_SP, sizing.commentTextSp);
     }
 
     private void applyTheme(RemoteViews views, ThemeManager.Palette palette) {
         views.setInt(R.id.widgetRoot, "setBackgroundColor", palette.surface);
-        views.setTextColor(R.id.accountView, palette.textSecondary);
+        views.setInt(R.id.dateNavigation, "setBackgroundColor", palette.surfaceSecondary);
+        views.setInt(R.id.summaryRow, "setBackgroundColor", palette.surface);
+        views.setInt(R.id.regularCard, "setBackgroundColor", palette.surfaceSecondary);
+        views.setInt(R.id.overtimeCard, "setBackgroundColor", palette.surfaceSecondary);
+        views.setInt(R.id.totalCard, "setBackgroundColor", palette.surfaceSecondary);
+        views.setInt(R.id.punchTable, "setBackgroundColor", palette.surfaceSecondary);
+        views.setInt(R.id.commentButton, "setBackgroundColor", palette.accent);
         views.setTextColor(R.id.dayTitleView, palette.text);
-        views.setTextColor(R.id.prevButton, palette.text);
-        views.setTextColor(R.id.nextButton, palette.text);
-        views.setTextColor(R.id.refreshButton, palette.text);
-        views.setTextColor(R.id.bankView, palette.successText);
-        views.setTextColor(R.id.shiftsView, palette.text);
-        views.setInt(R.id.bankView, "setBackgroundColor", palette.successSoft);
-        views.setInt(R.id.shiftsView, "setBackgroundColor", palette.surfaceSecondary);
+        views.setTextColor(R.id.prevButton, palette.accent);
+        views.setTextColor(R.id.nextButton, palette.accent);
+        setSummaryColors(views, palette);
+        setPunchCellColors(views, palette);
+        views.setTextColor(R.id.emptyView, palette.textSecondary);
+        views.setTextColor(R.id.commentButton, android.graphics.Color.WHITE);
+    }
+
+    private void setSummaryColors(RemoteViews views, ThemeManager.Palette palette) {
+        int[] labels = {R.id.regularLabel, R.id.overtimeLabel, R.id.totalLabel};
+        int[] values = {R.id.regularValue, R.id.overtimeValue, R.id.totalValue};
+        for (int label : labels) {
+            views.setTextColor(label, palette.textSecondary);
+        }
+        for (int value : values) {
+            views.setTextColor(value, palette.text);
+        }
+    }
+
+    private void setPunchCellColors(RemoteViews views, ThemeManager.Palette palette) {
+        int[] cells = {R.id.entry1, R.id.exit1, R.id.entry2, R.id.exit2, R.id.entry3, R.id.exit3};
+        for (int cell : cells) {
+            views.setTextColor(cell, palette.text);
+            views.setInt(cell, "setBackgroundColor", palette.surface);
+        }
     }
 
     private WidgetSizing resolveSizing(Bundle options) {
@@ -233,54 +301,60 @@ public class PunchWidgetProvider extends AppWidgetProvider {
         int footprint = Math.min(usableWidthDp, usableHeightDp);
 
         if (usableWidthDp >= 300 || usableHeightDp >= 260 || footprint >= 220) {
-            return new WidgetSizing(20, 24, 18, 16, 18, 12, 16f, 36f, 28f, 18f, 19f, 17f);
+            return new WidgetSizing(18, 9, 8, 14, 14, 16, 14, 34f, 15f, 11f, 17f, 14f, 22f, 15f);
         }
         if (usableWidthDp >= 230 || usableHeightDp >= 200 || footprint >= 170) {
-            return new WidgetSizing(16, 22, 16, 13, 14, 10, 13f, 32f, 22f, 15f, 16f, 14f);
+            return new WidgetSizing(14, 8, 7, 12, 12, 13, 12, 32f, 14f, 10f, 16f, 13f, 20f, 14f);
         }
-        return new WidgetSizing(12, 18, 14, 10, 12, 8, 11f, 28f, 18f, 13f, 13f, 12f);
+        return new WidgetSizing(10, 6, 6, 10, 10, 11, 10, 28f, 12f, 9f, 14f, 12f, 18f, 12f);
     }
 
     private static class WidgetSizing {
         final int rootPaddingDp;
         final int buttonHorizontalPaddingDp;
         final int buttonVerticalPaddingDp;
-        final int cardPaddingDp;
-        final int refreshHorizontalPaddingDp;
-        final int refreshVerticalPaddingDp;
-        final float accountTextSp;
+        final int navContainerPaddingDp;
+        final int tablePaddingDp;
+        final int commentHorizontalPaddingDp;
+        final int commentVerticalPaddingDp;
         final float navTextSp;
         final float titleTextSp;
-        final float bankTextSp;
-        final float shiftsTextSp;
-        final float refreshTextSp;
+        final float summaryLabelTextSp;
+        final float summaryValueTextSp;
+        final float headerTextSp;
+        final float punchTextSp;
+        final float commentTextSp;
 
         WidgetSizing(
                 int rootPaddingDp,
                 int buttonHorizontalPaddingDp,
                 int buttonVerticalPaddingDp,
-                int cardPaddingDp,
-                int refreshHorizontalPaddingDp,
-                int refreshVerticalPaddingDp,
-                float accountTextSp,
+                int navContainerPaddingDp,
+                int tablePaddingDp,
+                int commentHorizontalPaddingDp,
+                int commentVerticalPaddingDp,
                 float navTextSp,
                 float titleTextSp,
-                float bankTextSp,
-                float shiftsTextSp,
-                float refreshTextSp
+                float summaryLabelTextSp,
+                float summaryValueTextSp,
+                float headerTextSp,
+                float punchTextSp,
+                float commentTextSp
         ) {
             this.rootPaddingDp = rootPaddingDp;
             this.buttonHorizontalPaddingDp = buttonHorizontalPaddingDp;
             this.buttonVerticalPaddingDp = buttonVerticalPaddingDp;
-            this.cardPaddingDp = cardPaddingDp;
-            this.refreshHorizontalPaddingDp = refreshHorizontalPaddingDp;
-            this.refreshVerticalPaddingDp = refreshVerticalPaddingDp;
-            this.accountTextSp = accountTextSp;
+            this.navContainerPaddingDp = navContainerPaddingDp;
+            this.tablePaddingDp = tablePaddingDp;
+            this.commentHorizontalPaddingDp = commentHorizontalPaddingDp;
+            this.commentVerticalPaddingDp = commentVerticalPaddingDp;
             this.navTextSp = navTextSp;
             this.titleTextSp = titleTextSp;
-            this.bankTextSp = bankTextSp;
-            this.shiftsTextSp = shiftsTextSp;
-            this.refreshTextSp = refreshTextSp;
+            this.summaryLabelTextSp = summaryLabelTextSp;
+            this.summaryValueTextSp = summaryValueTextSp;
+            this.headerTextSp = headerTextSp;
+            this.punchTextSp = punchTextSp;
+            this.commentTextSp = commentTextSp;
         }
     }
 

@@ -29,7 +29,7 @@ android {
 
     defaultConfig {
         applicationId "com.infopunch.checker"
-        minSdk 24
+        minSdk 26
         targetSdk 36
         versionCode versionCodeValue
         versionName versionNameValue

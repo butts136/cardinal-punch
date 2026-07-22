@@ -61,9 +61,10 @@ public class BridgeClient {
         payload.put("user_id", account.userId);
 
         Request request = new Request.Builder()
-                .url(normalizeBaseUrl(baseUrl) + "/api/register_account?device_token=" + deviceToken)
+                .url(normalizeBaseUrl(baseUrl) + "/api/register_account")
                 .post(RequestBody.create(payload.toString(), JSON))
                 .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + deviceToken)
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
@@ -76,7 +77,6 @@ public class BridgeClient {
     public BridgeState fetchState(String baseUrl, String deviceToken, String accountId) throws Exception {
         HttpUrl url = HttpUrl.parse(normalizeBaseUrl(baseUrl) + "/api/state")
                 .newBuilder()
-                .addQueryParameter("device_token", deviceToken)
                 .addQueryParameter("account_id", accountId)
                 .build();
 
@@ -84,6 +84,7 @@ public class BridgeClient {
                 .url(url)
                 .get()
                 .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + deviceToken)
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
@@ -104,19 +105,17 @@ public class BridgeClient {
             boolean missingPunchAlerted,
             int timeoutSeconds
     ) throws Exception {
-        HttpUrl url = HttpUrl.parse(normalizeBaseUrl(baseUrl) + "/api/wait_state")
-                .newBuilder()
-                .addQueryParameter("device_token", deviceToken)
-                .addQueryParameter("account_id", accountId)
-                .addQueryParameter("last_signature", lastSignature == null ? "" : lastSignature)
-                .addQueryParameter("last_missing", Boolean.toString(missingPunchAlerted))
-                .addQueryParameter("timeout", Integer.toString(timeoutSeconds))
-                .build();
+        JSONObject payload = new JSONObject();
+        payload.put("account_id", accountId);
+        payload.put("last_signature", lastSignature == null ? "" : lastSignature);
+        payload.put("last_missing", missingPunchAlerted);
+        payload.put("timeout", timeoutSeconds);
 
         Request request = new Request.Builder()
-                .url(url)
-                .get()
+                .url(normalizeBaseUrl(baseUrl) + "/api/wait_state")
+                .post(RequestBody.create(payload.toString(), JSON))
                 .header("Accept", "application/json")
+                .header("Authorization", "Bearer " + deviceToken)
                 .build();
 
         try (Response response = waitHttpClient.newCall(request).execute()) {
@@ -129,7 +128,7 @@ public class BridgeClient {
         }
     }
 
-    private String normalizeBaseUrl(String baseUrl) {
+    private String normalizeBaseUrl(String baseUrl) throws IOException {
         String value = baseUrl == null ? "" : baseUrl.trim();
         if (!value.startsWith("http://") && !value.startsWith("https://")) {
             value = "https://" + value;
@@ -137,7 +136,11 @@ public class BridgeClient {
         if (value.endsWith("/")) {
             value = value.substring(0, value.length() - 1);
         }
-        return value;
+        HttpUrl parsed = HttpUrl.parse(value);
+        if (parsed == null || !"https".equalsIgnoreCase(parsed.scheme()) || parsed.host().isEmpty()) {
+            throw new IOException("Le relais doit utiliser une adresse HTTPS valide.");
+        }
+        return parsed.newBuilder().query(null).fragment(null).build().toString().replaceAll("/$", "");
     }
 
     public static class BridgeState {

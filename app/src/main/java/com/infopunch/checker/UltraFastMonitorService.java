@@ -82,12 +82,6 @@ public class UltraFastMonitorService extends Service {
                 stopSelf();
                 return;
             }
-            String bridgeUrl = sessionManager.getBridgeUrl();
-            String bridgeToken = sessionManager.getBridgeToken();
-            if (bridgeUrl.isEmpty() || bridgeToken.isEmpty()) {
-                return;
-            }
-
             Set<String> desiredAccounts = new HashSet<>();
             for (SessionManager.SessionData account : sessionManager.getAccounts()) {
                 desiredAccounts.add(account.accountId);
@@ -108,7 +102,6 @@ public class UltraFastMonitorService extends Service {
     }
 
     private void watchAccount(String accountId) {
-        BridgeClient bridgeClient = new BridgeClient();
         try {
             while (serviceRunning && !Thread.currentThread().isInterrupted()) {
                 try {
@@ -117,63 +110,25 @@ public class UltraFastMonitorService extends Service {
                         return;
                     }
 
-                    SessionManager.SessionData account = sessionManager.findAccount(accountId);
-                    if (account == null) {
+                    if (sessionManager.findAccount(accountId) == null) {
                         return;
                     }
-
-                    String bridgeUrl = sessionManager.getBridgeUrl();
-                    String bridgeToken = sessionManager.getBridgeToken();
-                    if (bridgeUrl.isEmpty() || bridgeToken.isEmpty()) {
-                        sleepQuietly(2000);
-                        continue;
-                    }
-
-                    BridgeClient.BridgeState state = bridgeClient.waitForStateChange(
-                            bridgeUrl,
-                            bridgeToken,
-                            accountId,
-                            account.lastPunchSignature,
-                            account.missingPunchAlerted,
-                            45
-                    );
-                    handleState(sessionManager, accountId, state);
-                } catch (BridgeClient.BridgeException exception) {
-                    if (exception.statusCode == 404) {
-                        registerAccountIfNeeded(bridgeClient, accountId);
-                    } else {
-                        if (!sleepQuietly(3000)) {
-                            return;
-                        }
+                    NotificationHelper.ensureChannel(getApplicationContext());
+                    PunchMonitorEngine.checkAccount(getApplicationContext(), accountId, null);
+                    if (!sleepQuietly(1000)) {
+                        return;
                     }
                 } catch (InterruptedException interruptedException) {
                     Thread.currentThread().interrupt();
                     return;
                 } catch (Exception ignored) {
-                    if (!sleepQuietly(3000)) {
+                    if (!sleepQuietly(2000)) {
                         return;
                     }
                 }
             }
         } finally {
             accountWatchers.remove(accountId);
-        }
-    }
-
-    private void registerAccountIfNeeded(BridgeClient bridgeClient, String accountId) {
-        try {
-            SessionManager sessionManager = new SessionManager(getApplicationContext());
-            SessionManager.SessionData account = sessionManager.findAccount(accountId);
-            if (account == null) {
-                return;
-            }
-            String bridgeUrl = sessionManager.getBridgeUrl();
-            String bridgeToken = sessionManager.getBridgeToken();
-            if (bridgeUrl.isEmpty() || bridgeToken.isEmpty()) {
-                return;
-            }
-            bridgeClient.registerAccount(bridgeUrl, bridgeToken, account);
-        } catch (Exception ignored) {
         }
     }
 
@@ -273,7 +228,7 @@ public class UltraFastMonitorService extends Service {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("Cardinal Punch")
-                .setContentText("Surveillance ultra-rapide active")
+                .setContentText("Detection directe Info-Punch active")
                 .setOngoing(true)
                 .build();
     }
