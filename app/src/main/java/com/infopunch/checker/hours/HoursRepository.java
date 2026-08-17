@@ -14,19 +14,15 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import okhttp3.HttpUrl;
 import okhttp3.JavaNetCookieJar;
 import okhttp3.OkHttpClient;
-import okhttp3.FormBody;
 import okhttp3.Request;
-import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class HoursRepository {
@@ -106,113 +102,25 @@ public class HoursRepository {
     public String sendNote(SessionManager.SessionData session, LocalDate date, String note) throws IOException {
         String referer = ensurePortalSession(session);
         String endpoint = buildAbsoluteUrl(session.sitePath, "ajaxCommands/UserPanel.AddNotesEmp.asp");
-        IOException lastError = null;
-        String lastBody = "";
-
-        for (String dateCandidate : buildDateCandidates(date)) {
-            HttpUrl url = HttpUrl.parse(endpoint).newBuilder()
-                    .addQueryParameter("DateJour", dateCandidate)
-                    .addQueryParameter("QRaison", note)
-                    .build();
-
-            Request request = new Request.Builder()
-                    .url(url)
-                    .get()
-                    .header("Accept", "*/*")
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Referer", referer)
-                    .build();
-
-            try (Response response = httpClient.newCall(request).execute()) {
-                String body = response.body() != null ? response.body().string().trim() : "";
-                lastBody = body;
-                if (!response.isSuccessful()) {
-                    lastError = new IOException("Envoi de note impossible (" + response.code() + ")");
-                    continue;
-                }
-                if (body.isEmpty() || body.toLowerCase(Locale.ROOT).contains("note")) {
-                    return body;
-                }
-                return body;
-            }
-        }
-
-        if (lastError != null) {
-            throw lastError;
-        }
-        throw new IOException(lastBody.isEmpty() ? "Envoi de note impossible." : lastBody);
-    }
-
-    public List<String> sendNoteTestVariants(SessionManager.SessionData session, LocalDate date, String note) throws IOException {
-        String referer = ensurePortalSession(session);
-        String endpoint = buildAbsoluteUrl(session.sitePath, "ajaxCommands/UserPanel.AddNotesEmp.asp");
-        List<NoteVariant> variants = buildNoteVariants(date, note);
-        List<String> results = new ArrayList<>();
-
-        for (int i = 0; i < variants.size(); i++) {
-            NoteVariant variant = variants.get(i);
-            String testNote = "[NOTE] #" + (i + 1) + " " + note;
-            try {
-                String response = sendNoteVariant(endpoint, referer, variant, testNote);
-                results.add("#" + (i + 1) + " OK " + response);
-            } catch (Exception exception) {
-                results.add("#" + (i + 1) + " ECHEC " + (exception.getMessage() == null ? "" : exception.getMessage()));
-            }
-        }
-        return results;
-    }
-
-    private String sendNoteVariant(String endpoint, String referer, NoteVariant variant, String note) throws IOException {
-        Request request;
-        if (variant.post) {
-            RequestBody body = new FormBody.Builder()
-                    .add(variant.dateKey, variant.dateValue)
-                    .add(variant.noteKey, note)
-                    .build();
-            request = new Request.Builder()
-                    .url(endpoint)
-                    .post(body)
-                    .header("Accept", "*/*")
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Referer", referer)
-                    .build();
-        } else {
-            HttpUrl url = HttpUrl.parse(endpoint).newBuilder()
-                    .addQueryParameter(variant.dateKey, variant.dateValue)
-                    .addQueryParameter(variant.noteKey, note)
-                    .build();
-            request = new Request.Builder()
-                    .url(url)
-                    .get()
-                    .header("Accept", "*/*")
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Referer", referer)
-                    .build();
-        }
+        HttpUrl url = HttpUrl.parse(endpoint).newBuilder()
+                .addQueryParameter("DateJour", date.format(PORTAL_DATE_FORMAT))
+                .addQueryParameter("QRaison", note)
+                .build();
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .header("Accept", "*/*")
+                .header("X-Requested-With", "XMLHttpRequest")
+                .header("Referer", referer)
+                .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
             String body = response.body() != null ? response.body().string().trim() : "";
             if (!response.isSuccessful()) {
-                throw new IOException("HTTP " + response.code());
+                throw new IOException("Envoi de note impossible (" + response.code() + ")");
             }
             return body;
         }
-    }
-
-    private List<NoteVariant> buildNoteVariants(LocalDate date, String note) {
-        List<String> dates = buildDateCandidates(date);
-        List<NoteVariant> variants = new ArrayList<>();
-        variants.add(new NoteVariant(false, "DateJour", dates.get(0), "QRaison"));
-        variants.add(new NoteVariant(false, "DateJour", dates.get(1), "QRaison"));
-        variants.add(new NoteVariant(false, "DateJour", dates.get(2), "QRaison"));
-        variants.add(new NoteVariant(true, "DateJour", dates.get(0), "QRaison"));
-        variants.add(new NoteVariant(true, "DateJour", dates.get(1), "QRaison"));
-        variants.add(new NoteVariant(true, "DateJour", dates.get(2), "QRaison"));
-        variants.add(new NoteVariant(false, "dateJour", dates.get(0), "qRaison"));
-        variants.add(new NoteVariant(false, "DateJour", dates.get(0), "Raison"));
-        variants.add(new NoteVariant(true, "dateJour", dates.get(0), "qRaison"));
-        variants.add(new NoteVariant(true, "DateJour", dates.get(0), "Raison"));
-        return variants;
     }
 
     private void accumulateMonth(
@@ -372,14 +280,6 @@ public class HoursRepository {
         }
     }
 
-    private List<String> buildDateCandidates(LocalDate date) {
-        Set<String> values = new LinkedHashSet<>();
-        values.add(date.format(PORTAL_DATE_FORMAT));
-        values.add(date.toString());
-        values.add(date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.CANADA_FRENCH)));
-        return new ArrayList<>(values);
-    }
-
     private List<String> extractSummary(Elements blocks) {
         List<String> values = new ArrayList<>();
         for (Element block : blocks) {
@@ -432,17 +332,4 @@ public class HoursRepository {
         return element != null ? element.text().trim() : "";
     }
 
-    private static class NoteVariant {
-        final boolean post;
-        final String dateKey;
-        final String dateValue;
-        final String noteKey;
-
-        NoteVariant(boolean post, String dateKey, String dateValue, String noteKey) {
-            this.post = post;
-            this.dateKey = dateKey;
-            this.dateValue = dateValue;
-            this.noteKey = noteKey;
-        }
-    }
 }
