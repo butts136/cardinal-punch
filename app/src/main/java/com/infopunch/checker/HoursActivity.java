@@ -367,31 +367,8 @@ public class HoursActivity extends AppCompatActivity {
                 .setTitle(getString(R.string.hours_note_dialog_title) + " " + date)
                 .setView(input)
                 .setPositiveButton(R.string.hours_note_send, (dialog, which) -> sendNote(date, input.getText().toString().trim()))
-                .setNeutralButton(R.string.hours_note_send_tests, (dialog, which) -> sendNoteTests(date, input.getText().toString().trim()))
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
-    }
-
-    private void sendNoteTests(LocalDate date, String note) {
-        if (note.isEmpty()) {
-            showMessage("La note est vide.");
-            return;
-        }
-        setLoading(true);
-        executorService.execute(() -> {
-            try {
-                List<String> responses = hoursRepository.sendNoteTestVariants(session, date, note);
-                runOnUiThread(() -> {
-                    setLoading(false);
-                    showMessage("Tests envoyes: " + responses.size());
-                });
-            } catch (Exception exception) {
-                runOnUiThread(() -> {
-                    setLoading(false);
-                    showMessage(exception.getMessage() != null ? exception.getMessage() : "Tests impossibles.");
-                });
-            }
-        });
     }
 
     private void sendNote(LocalDate date, String note) {

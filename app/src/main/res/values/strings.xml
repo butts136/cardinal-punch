@@ -66,7 +66,6 @@
     <string name="hours_note_dialog_title">Envoyer une note pour le</string>
     <string name="hours_note_hint">Entre ta note</string>
     <string name="hours_note_send">Envoyer</string>
-    <string name="hours_note_send_tests">Envoyer 10 tests</string>
     <string name="hours_entry">Entree</string>
     <string name="hours_exit">Sortie</string>
     <string name="security_dialog_title">Protection de l\u0027application</string>
